@@ -1,0 +1,100 @@
+/* ============================================================
+   AIStat Learn - Stage 15 UI
+   ============================================================ */
+
+.main {
+    padding-top: 1rem;
+}
+
+/* Main title */
+
+h1 {
+    font-weight: 700;
+}
+
+/* Section headings */
+
+h2 {
+    margin-top: 1rem;
+}
+
+h3 {
+    margin-top: 0.8rem;
+}
+
+
+/* Metric cards */
+
+[data-testid="stMetric"] {
+    padding: 18px;
+    border-radius: 12px;
+    border: 1px solid rgba(128, 128, 128, 0.25);
+}
+
+
+/* Buttons */
+
+.stButton > button {
+    width: 100%;
+    border-radius: 10px;
+    min-height: 45px;
+    font-weight: 600;
+}
+
+
+/* Expanders */
+
+[data-testid="stExpander"] {
+    border-radius: 10px;
+}
+
+
+/* Dataframes */
+
+[data-testid="stDataFrame"] {
+    border-radius: 10px;
+}
+
+
+/* Sidebar */
+
+section[data-testid="stSidebar"] {
+    border-right: 1px solid rgba(128, 128, 128, 0.25);
+}
+
+
+/* Info boxes */
+
+[data-testid="stAlert"] {
+    border-radius: 10px;
+}
+
+
+/* Progress bars */
+
+.stProgress {
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+
+/* Text areas */
+
+textarea {
+    border-radius: 10px !important;
+}
+
+
+/* Select boxes */
+
+div[data-baseweb="select"] {
+    border-radius: 10px;
+}
+
+
+/* Divider */
+
+hr {
+    margin-top: 1.5rem;
+    margin-bottom: 1.5rem;
+}

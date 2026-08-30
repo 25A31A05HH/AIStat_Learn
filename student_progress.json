@@ -1,0 +1,32 @@
+{
+    "assessments": [
+        {
+            "assessment_number": 1,
+            "score": 3,
+            "total": 5,
+            "percentage": 60.0,
+            "topic_results": [
+                {
+                    "topic": "Natural Acceptance",
+                    "performance": 0.0,
+                    "level": "Weak"
+                },
+                {
+                    "topic": "Physical Facilities",
+                    "performance": 100.0,
+                    "level": "Strong"
+                },
+                {
+                    "topic": "Introduction to Value Education",
+                    "performance": 100.0,
+                    "level": "Strong"
+                },
+                {
+                    "topic": "Human Relationships",
+                    "performance": 100.0,
+                    "level": "Strong"
+                }
+            ]
+        }
+    ]
+}
