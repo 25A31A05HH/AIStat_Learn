@@ -1,4 +1,3 @@
-import os
 import uuid
 import re
 import streamlit as st
@@ -28,12 +27,13 @@ st.set_page_config(
 
 
 # =========================================================
-# CUSTOM CSS
+# CSS
 # =========================================================
 
 st.markdown(
     """
     <style>
+
     .main-title {
         font-size: 42px;
         font-weight: 700;
@@ -44,26 +44,6 @@ st.markdown(
         color: #666;
     }
 
-    .score-box {
-        padding: 20px;
-        border-radius: 12px;
-        border: 1px solid #ddd;
-        margin-bottom: 20px;
-    }
-
-    .correct-box {
-        padding: 15px;
-        border-radius: 10px;
-        border: 1px solid #ddd;
-        margin-top: 10px;
-    }
-
-    .topic-box {
-        padding: 15px;
-        border-radius: 10px;
-        border: 1px solid #ddd;
-        margin-top: 10px;
-    }
     </style>
     """,
     unsafe_allow_html=True
@@ -76,6 +56,7 @@ st.markdown(
 
 defaults = {
     "user_id": str(uuid.uuid4()),
+
     "current_step": 1,
 
     "material_text": "",
@@ -85,24 +66,25 @@ defaults = {
     "quiz_id": None,
 
     "assessment_answers": {},
+
     "quiz_submitted": False,
 
     "score": 0,
     "total_questions": 0,
     "percentage": 0,
 
-    "quiz_history": [],
-    "topic_progress": {},
-
     "material_saved": False,
-    "pdf_loaded": False,
+
     "last_uploaded_file": "",
 
-    "show_topic_explanations": True
+    "quiz_history": []
 }
 
+
 for key, value in defaults.items():
+
     if key not in st.session_state:
+
         st.session_state[key] = value
 
 
@@ -111,63 +93,71 @@ for key, value in defaults.items():
 # =========================================================
 
 supabase = None
+
 db_status = "Not Connected"
 
+
 try:
+
     from supabase import create_client
 
-    if "SUPABASE_URL" in st.secrets and "SUPABASE_KEY" in st.secrets:
-
-        SUPABASE_URL = st.secrets["SUPABASE_URL"]
-        SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+    if (
+        "SUPABASE_URL" in st.secrets
+        and
+        "SUPABASE_KEY" in st.secrets
+    ):
 
         supabase = create_client(
-            SUPABASE_URL,
-            SUPABASE_KEY
+            st.secrets["SUPABASE_URL"],
+            st.secrets["SUPABASE_KEY"]
         )
 
         db_status = "Connected"
 
     else:
+
         db_status = "Secrets not found"
 
+
 except Exception as e:
+
     db_status = f"Connection error: {e}"
 
 
 # =========================================================
-# NAVIGATION FUNCTION
+# NAVIGATION
 # =========================================================
 
-def go_to_step(step_number):
-    st.session_state.current_step = step_number
+def go_to_step(step):
+
+    st.session_state.current_step = step
+
     st.rerun()
 
 
 # =========================================================
-# TEXT HELPERS
+# TEXT FUNCTIONS
 # =========================================================
 
-def clean_display_text(text):
-    if text is None:
+def clean_text(value):
+
+    if value is None:
+
         return ""
 
-    text = str(text)
+    return re.sub(
+        r"\s+",
+        " ",
+        str(value)
+    ).strip()
 
-    text = text.replace("\\n", " ")
-    text = re.sub(r"\s+", " ", text)
 
-    return text.strip()
-
-
-def normalize_option(option):
-    if option is None:
-        return ""
-
-    return clean_display_text(option)
-
+# =========================================================
+# QUESTION TEXT
+# =========================================================
 
 def get_question_text(question):
+
     if isinstance(question, dict):
 
         for key in [
@@ -175,13 +165,21 @@ def get_question_text(question):
             "question_text",
             "text"
         ]:
+
             if key in question:
-                return clean_display_text(question[key])
 
-    return clean_display_text(question)
+                return clean_text(
+                    question[key]
+                )
+
+    return clean_text(question)
 
 
-def get_question_topic(question):
+# =========================================================
+# TOPIC
+# =========================================================
+
+def get_topic(question):
 
     if isinstance(question, dict):
 
@@ -190,13 +188,21 @@ def get_question_topic(question):
             "subject",
             "category"
         ]:
+
             if key in question:
-                return clean_display_text(question[key])
+
+                return clean_text(
+                    question[key]
+                )
 
     return "General"
 
 
-def get_question_concept(question):
+# =========================================================
+# CONCEPT
+# =========================================================
+
+def get_concept(question):
 
     if isinstance(question, dict):
 
@@ -204,166 +210,321 @@ def get_question_concept(question):
             "concept",
             "subtopic"
         ]:
-            if key in question:
-                return clean_display_text(question[key])
-
-    return get_question_topic(question)
-
-
-def get_correct_answer(question):
-
-    if isinstance(question, dict):
-
-        for key in [
-            "correct_answer",
-            "answer",
-            "correct",
-            "correct_option"
-        ]:
 
             if key in question:
 
-                value = question[key]
+                return clean_text(
+                    question[key]
+                )
 
-                if isinstance(value, int):
-                    return str(value)
+    return get_topic(question)
 
-                return normalize_option(value)
 
-    return ""
-
+# =========================================================
+# GET OPTIONS
+# =========================================================
 
 def get_options(question):
 
     if not isinstance(question, dict):
+
         return []
 
-    options = question.get("options", [])
+    raw_options = None
 
-    if isinstance(options, dict):
-        options = list(options.values())
+    # Try different possible names
+    for key in [
+        "options",
+        "choices",
+        "answers"
+    ]:
 
-    if not isinstance(options, list):
+        if key in question:
+
+            raw_options = question[key]
+
+            break
+
+    if raw_options is None:
+
+        return []
+
+    # ---------------------------------------------
+    # Dictionary
+    # ---------------------------------------------
+
+    if isinstance(raw_options, dict):
+
         options = []
 
-    return [
-        normalize_option(option)
-        for option in options
-    ]
-
-
-def get_general_explanation(question):
-
-    if isinstance(question, dict):
-
-        for key in [
-            "explanation",
-            "answer_explanation",
-            "reason"
+        for letter in [
+            "A",
+            "B",
+            "C",
+            "D"
         ]:
 
-            if key in question:
-                return clean_display_text(question[key])
+            if letter in raw_options:
+
+                options.append(
+                    clean_text(
+                        raw_options[letter]
+                    )
+                )
+
+        if options:
+
+            return options
+
+        return [
+            clean_text(value)
+            for value in raw_options.values()
+        ]
+
+    # ---------------------------------------------
+    # List
+    # ---------------------------------------------
+
+    if isinstance(
+        raw_options,
+        (list, tuple)
+    ):
+
+        return [
+            clean_text(option)
+            for option in raw_options
+        ]
+
+    return []
+
+
+# =========================================================
+# GET CORRECT ANSWER
+# =========================================================
+
+def get_correct_raw(question):
+
+    if not isinstance(question, dict):
+
+        return ""
+
+    for key in [
+        "correct_answer",
+        "correct_option",
+        "answer",
+        "correct"
+    ]:
+
+        if key in question:
+
+            return clean_text(
+                question[key]
+            )
 
     return ""
 
 
-# =========================================================
-# CORRECT OPTION FINDER
-# =========================================================
+def get_correct_option(question):
 
-def find_correct_option(question):
+    correct = get_correct_raw(
+        question
+    )
 
-    correct = get_correct_answer(question)
-    options = get_options(question)
+    options = get_options(
+        question
+    )
 
     if not correct:
+
         return ""
 
-    # If answer is A/B/C/D
-    if correct.upper() in ["A", "B", "C", "D"]:
+    # ---------------------------------------------
+    # A / B / C / D
+    # ---------------------------------------------
 
-        index = ord(correct.upper()) - ord("A")
+    if correct.upper() in [
+        "A",
+        "B",
+        "C",
+        "D"
+    ]:
+
+        index = (
+            ord(correct.upper())
+            -
+            ord("A")
+        )
 
         if index < len(options):
+
             return options[index]
 
-    # Match exact option text
-    for option in options:
+    # ---------------------------------------------
+    # "A. Queue"
+    # ---------------------------------------------
 
-        if option.lower() == correct.lower():
+    for i, option in enumerate(
+        options
+    ):
+
+        letter = chr(
+            65 + i
+        )
+
+        if correct.upper().startswith(
+            letter + "."
+        ):
+
+            return option
+
+        if correct.lower() == option.lower():
+
             return option
 
     return correct
 
 
 # =========================================================
-# OPTION FEEDBACK
+# GET EXPLANATION
 # =========================================================
 
-def get_option_feedback(question, option):
+def get_explanation(question):
 
     if not isinstance(question, dict):
+
         return ""
 
-    feedback = question.get("option_feedback", {})
+    for key in [
+        "explanation",
+        "answer_explanation",
+        "reason"
+    ]:
 
-    if isinstance(feedback, dict):
+        if key in question:
 
-        if option in feedback:
-            return clean_display_text(feedback[option])
-
-        for key, value in feedback.items():
-
-            if str(key).lower() == str(option).lower():
-                return clean_display_text(value)
+            return clean_text(
+                question[key]
+            )
 
     return ""
 
 
-def explain_incorrect_option(question, option):
+# =========================================================
+# OPTION FEEDBACK
+# =========================================================
 
-    question_text = get_question_text(question)
-    topic = get_question_topic(question)
+def get_option_feedback(
+    question,
+    option
+):
 
-    correct_option = find_correct_option(question)
+    if not isinstance(question, dict):
 
-    if option == correct_option:
+        return ""
+
+    feedback = question.get(
+        "option_feedback",
+        {}
+    )
+
+    if isinstance(
+        feedback,
+        dict
+    ):
+
+        if option in feedback:
+
+            return clean_text(
+                feedback[option]
+            )
+
+        for key, value in feedback.items():
+
+            if clean_text(
+                key
+            ).lower() == option.lower():
+
+                return clean_text(
+                    value
+                )
+
+    return ""
+
+
+# =========================================================
+# WRONG OPTION EXPLANATION
+# =========================================================
+
+def explain_wrong_option(
+    question,
+    option
+):
+
+    correct = get_correct_option(
+        question
+    )
+
+    topic = get_topic(
+        question
+    )
+
+    question_text = get_question_text(
+        question
+    )
+
+    if option.lower() == correct.lower():
+
         return "This is the correct answer."
 
-    option_lower = option.lower()
+    # Queue / FIFO
+    if (
+        "queue" in correct.lower()
+        or
+        "fifo" in question_text.lower()
+    ):
 
-    # Common conceptual explanations
-    if "stack" in option_lower and "queue" in question_text.lower():
-        return (
-            "A stack follows LIFO (Last In, First Out), "
-            "while a queue follows FIFO (First In, First Out)."
-        )
+        if "stack" in option.lower():
 
-    if "queue" in option_lower and "stack" in question_text.lower():
-        return (
-            "A queue follows FIFO, whereas a stack follows "
-            "LIFO. Therefore, this option does not match the question."
-        )
+            return (
+                "A Stack follows LIFO "
+                "(Last In, First Out), "
+                "not FIFO."
+            )
 
-    if "tree" in option_lower:
-        return (
-            "A tree is mainly used to represent hierarchical "
-            "relationships. It does not represent the concept "
-            "being asked here."
-        )
+        if "tree" in option.lower():
 
-    if "graph" in option_lower:
-        return (
-            "A graph is generally used to represent relationships "
-            "or connections between entities. It is not the correct "
-            "concept for this question."
-        )
+            return (
+                "A Tree is mainly used to represent "
+                "hierarchical relationships."
+            )
+
+        if "graph" in option.lower():
+
+            return (
+                "A Graph represents relationships "
+                "between vertices and edges."
+            )
+
+    # Stack / LIFO
+    if (
+        "stack" in correct.lower()
+        or
+        "lifo" in question_text.lower()
+    ):
+
+        if "queue" in option.lower():
+
+            return (
+                "A Queue follows FIFO, whereas "
+                "a Stack follows LIFO."
+            )
 
     return (
-        f"This option is not correct because it does not match "
-        f"the required concept of {topic}. "
-        f"The correct answer is '{correct_option}'."
+        f"This option is incorrect because "
+        f"it does not match the concept "
+        f"being tested in {topic}. "
+        f"The correct answer is "
+        f"{correct}."
     )
 
 
@@ -371,7 +532,7 @@ def explain_incorrect_option(question, option):
 # TOPIC EXPLANATION
 # =========================================================
 
-def create_topic_explanation(topic):
+def topic_explanation(topic):
 
     topic_lower = topic.lower()
 
@@ -380,22 +541,21 @@ def create_topic_explanation(topic):
         return """
 ### 📚 Queue
 
-A **Queue** is a linear data structure that follows the **FIFO
-(First In, First Out)** principle.
+A **Queue** is a linear data structure that follows:
 
-Think about people standing in a ticket line:
+**FIFO — First In, First Out**
 
-- The person who enters first gets served first.
-- A new person joins at the back.
-- The person at the front leaves first.
+Think about a ticket counter.
 
-#### Main Queue Operations
+The person who comes first gets served first.
+
+#### Main operations
 
 - **Enqueue** → Add an element
 - **Dequeue** → Remove an element
-- **Front/Peek** → View the first element
+- **Front / Peek** → View the first element
 
-💡 **Remember:** Queue = FIFO
+💡 **Remember: Queue = FIFO**
 """
 
     if "stack" in topic_lower:
@@ -403,21 +563,21 @@ Think about people standing in a ticket line:
         return """
 ### 📚 Stack
 
-A **Stack** is a linear data structure that follows the
-**LIFO (Last In, First Out)** principle.
+A **Stack** is a linear data structure that follows:
 
-Think about a stack of plates:
+**LIFO — Last In, First Out**
 
-- You place a new plate on top.
-- You remove the top plate first.
+Think about a stack of plates.
 
-#### Main Stack Operations
+The last plate placed on top is removed first.
+
+#### Main operations
 
 - **Push** → Add an element
-- **Pop** → Remove the top element
+- **Pop** → Remove an element
 - **Peek** → View the top element
 
-💡 **Remember:** Stack = LIFO
+💡 **Remember: Stack = LIFO**
 """
 
     if "array" in topic_lower:
@@ -425,18 +585,17 @@ Think about a stack of plates:
         return """
 ### 📚 Array
 
-An **Array** stores multiple elements of the same type in
-contiguous memory locations.
+An **Array** stores elements in an ordered collection.
 
 Each element can be accessed using an index.
 
-For example:
+Example:
 
-Array = [10, 20, 30, 40]
+`[10, 20, 30, 40]`
 
-The first element is accessed using index 0.
+The first element is at index `0`.
 
-💡 **Remember:** Array = indexed collection of elements.
+💡 **Remember: Array = Indexed collection**
 """
 
     if "linked list" in topic_lower:
@@ -444,17 +603,16 @@ The first element is accessed using index 0.
         return """
 ### 📚 Linked List
 
-A **Linked List** is a linear data structure made up of nodes.
+A **Linked List** consists of nodes.
 
-Each node generally contains:
+Each node contains:
 
 - Data
-- A link/reference to the next node
+- A link/reference to another node
 
-Unlike arrays, linked-list elements do not need to be stored
-in contiguous memory.
+The nodes are connected to form a sequence.
 
-💡 **Remember:** Linked List = Nodes connected using links.
+💡 **Remember: Linked List = Connected Nodes**
 """
 
     if "python" in topic_lower:
@@ -462,7 +620,7 @@ in contiguous memory.
         return """
 ### 📚 Python
 
-Python is a high-level, interpreted programming language.
+Python is a high-level programming language.
 
 It is widely used for:
 
@@ -474,7 +632,7 @@ It is widely used for:
 
 Python is popular because its syntax is simple and readable.
 
-💡 **Remember:** Python = Simple syntax + powerful libraries.
+💡 **Remember: Python = Simple + Powerful**
 """
 
     if "data structure" in topic_lower:
@@ -482,8 +640,7 @@ Python is popular because its syntax is simple and readable.
         return """
 ### 📚 Data Structures
 
-A data structure is a way of organizing and storing data so
-that it can be accessed and modified efficiently.
+A data structure is a way of organizing and storing data.
 
 Common data structures include:
 
@@ -494,22 +651,18 @@ Common data structures include:
 - Trees
 - Graphs
 
-Different data structures are suitable for different problems.
+Different data structures are useful for different problems.
 
-💡 **Remember:** Choose a data structure based on the operations
-your problem requires.
+💡 Choose a data structure based on the required operations.
 """
 
     return f"""
 ### 📚 {topic}
 
-This question belongs to the **{topic}** topic.
+This question is related to **{topic}**.
 
-The main idea is to understand the fundamental concepts,
-definitions, operations and applications related to this topic.
-
-Review your learning material for this topic and focus on the
-concept tested by the question.
+Review the definition, properties, operations,
+and applications of this topic.
 """
 
 
@@ -517,118 +670,177 @@ concept tested by the question.
 # PERFORMANCE
 # =========================================================
 
-def calculate_performance(percentage):
+def performance_level(
+    percentage
+):
 
     if percentage >= 90:
+
         return "Excellent 🌟"
 
-    elif percentage >= 75:
+    if percentage >= 75:
+
         return "Very Good 👍"
 
-    elif percentage >= 60:
+    if percentage >= 60:
+
         return "Good 🙂"
 
-    elif percentage >= 40:
+    if percentage >= 40:
+
         return "Needs Improvement 📚"
 
     return "Needs More Practice 💪"
 
 
 # =========================================================
-# DATABASE FUNCTIONS
+# DATABASE — MATERIAL
 # =========================================================
 
-def save_material_to_db(material_name, material_text):
+def save_material_to_db(
+    name,
+    content
+):
 
     if supabase is None:
+
         return None
 
     try:
 
-        data = {
-            "user_id": st.session_state.user_id,
-            "material_name": material_name,
-            "content": material_text
-        }
+        result = (
+            supabase
+            .table("learning_materials")
+            .insert(
+                {
+                    "user_id":
+                        st.session_state.user_id,
 
-        result = supabase.table("learning_materials").insert(
-            data
-        ).execute()
+                    "material_name":
+                        name,
+
+                    "content":
+                        content
+                }
+            )
+            .execute()
+        )
 
         if result.data:
-            return result.data[0].get("id")
+
+            return result.data[0].get(
+                "id"
+            )
 
     except Exception as e:
 
         st.warning(
-            f"Material could not be saved to database: {e}"
+            f"Material could not be saved: {e}"
         )
 
     return None
 
 
-def save_quiz_to_db(questions):
+# =========================================================
+# DATABASE — QUIZ
+# =========================================================
+
+def save_quiz_to_db(
+    questions
+):
 
     if supabase is None:
+
         return None
 
     try:
 
-        quiz_data = {
-            "user_id": st.session_state.user_id,
-            "question_count": len(questions)
-        }
+        result = (
+            supabase
+            .table("quizzes")
+            .insert(
+                {
+                    "user_id":
+                        st.session_state.user_id,
 
-        result = supabase.table("quizzes").insert(
-            quiz_data
-        ).execute()
+                    "question_count":
+                        len(questions)
+                }
+            )
+            .execute()
+        )
 
         if result.data:
-            return result.data[0].get("id")
+
+            return result.data[0].get(
+                "id"
+            )
 
     except Exception as e:
 
         st.warning(
-            f"Quiz could not be saved to database: {e}"
+            f"Quiz could not be saved: {e}"
         )
 
     return None
 
+
+# =========================================================
+# DATABASE — ATTEMPT
+# =========================================================
 
 def save_attempt_to_db(
     quiz_id,
     score,
-    total_questions,
+    total,
     percentage
 ):
 
     if supabase is None:
+
         return
 
     try:
 
-        data = {
-            "user_id": st.session_state.user_id,
-            "quiz_id": quiz_id,
-            "score": score,
-            "total_questions": total_questions,
-            "percentage": percentage
-        }
+        (
+            supabase
+            .table("quiz_attempts")
+            .insert(
+                {
+                    "user_id":
+                        st.session_state.user_id,
 
-        supabase.table("quiz_attempts").insert(
-            data
-        ).execute()
+                    "quiz_id":
+                        quiz_id,
+
+                    "score":
+                        score,
+
+                    "total_questions":
+                        total,
+
+                    "percentage":
+                        percentage
+                }
+            )
+            .execute()
+        )
 
     except Exception as e:
 
         st.warning(
-            f"Attempt could not be saved to database: {e}"
+            f"Attempt could not be saved: {e}"
         )
 
+
+# =========================================================
+# DATABASE — HISTORY
+# =========================================================
 
 def load_quiz_history():
 
     if supabase is None:
+
         return []
 
     try:
@@ -651,6 +863,7 @@ def load_quiz_history():
         return result.data or []
 
     except Exception:
+
         return []
 
 
@@ -658,7 +871,9 @@ def load_quiz_history():
 # SIDEBAR
 # =========================================================
 
-st.sidebar.title("🎓 AIStat Learn")
+st.sidebar.title(
+    "🎓 AIStat Learn"
+)
 
 st.sidebar.caption(
     "AI-Powered Personalized Learning Platform"
@@ -666,9 +881,11 @@ st.sidebar.caption(
 
 st.sidebar.divider()
 
-st.sidebar.subheader("📌 Learning Progress")
+st.sidebar.subheader(
+    "📌 Learning Progress"
+)
 
-step_names = [
+steps = [
     "1️⃣ Learning Material",
     "2️⃣ Generate Questions",
     "3️⃣ Take Assessment",
@@ -676,24 +893,45 @@ step_names = [
     "5️⃣ Learning Plan"
 ]
 
-current_step = st.session_state.current_step
+for i, step_name in enumerate(
+    steps,
+    start=1
+):
 
-for i, step_name in enumerate(step_names, start=1):
+    if (
+        i
+        <
+        st.session_state.current_step
+    ):
 
-    if i < current_step:
-        st.sidebar.success(step_name)
+        st.sidebar.success(
+            step_name
+        )
 
-    elif i == current_step:
-        st.sidebar.info(step_name)
+    elif (
+        i
+        ==
+        st.session_state.current_step
+    ):
+
+        st.sidebar.info(
+            step_name
+        )
 
     else:
-        st.sidebar.write(step_name)
+
+        st.sidebar.write(
+            step_name
+        )
+
 
 st.sidebar.divider()
 
-st.sidebar.subheader("Navigation")
+st.sidebar.subheader(
+    "Navigation"
+)
 
-navigation_pages = [
+navigation = [
     "🏠 Home",
     "📚 Learning Material",
     "📝 Generate Questions",
@@ -703,35 +941,51 @@ navigation_pages = [
     "🔧 System Check"
 ]
 
-if current_step == 1:
+
+if st.session_state.current_step == 1:
+
     default_page = "📚 Learning Material"
 
-elif current_step == 2:
+elif st.session_state.current_step == 2:
+
     default_page = "📝 Generate Questions"
 
-elif current_step == 3:
+elif st.session_state.current_step == 3:
+
     default_page = "✍️ Take Assessment"
 
-elif current_step == 4:
+elif st.session_state.current_step == 4:
+
     default_page = "📊 Progress"
 
-elif current_step == 5:
+elif st.session_state.current_step == 5:
+
     default_page = "📅 Learning Plan"
 
 else:
+
     default_page = "🏠 Home"
+
 
 sidebar_page = st.sidebar.radio(
     "Go to",
-    navigation_pages,
-    index=navigation_pages.index(default_page)
+    navigation,
+    index=navigation.index(
+        default_page
+    )
 )
+
 
 st.sidebar.divider()
 
 if db_status == "Connected":
-    st.sidebar.success("🗄️ Database Connected")
+
+    st.sidebar.success(
+        "🗄️ Database Connected"
+    )
+
 else:
+
     st.sidebar.warning(
         f"🗄️ Database: {db_status}"
     )
@@ -744,7 +998,9 @@ else:
 if sidebar_page == "🏠 Home":
 
     st.markdown(
-        '<div class="main-title">🎓 AIStat Learn</div>',
+        '<div class="main-title">'
+        '🎓 AIStat Learn'
+        '</div>',
         unsafe_allow_html=True
     )
 
@@ -759,22 +1015,22 @@ if sidebar_page == "🏠 Home":
 
     st.write(
         """
-        Welcome to **AIStat Learn**! 🚀
+Welcome to **AIStat Learn**! 🚀
 
-        This platform helps students:
+This platform helps students:
 
-        📚 Upload or enter learning material
+📚 Upload learning material
 
-        🤖 Generate AI-powered practice questions
+🤖 Generate practice questions
 
-        📝 Take assessments
+✍️ Take assessments
 
-        💡 Understand why answers are correct or incorrect
+💡 Understand correct and incorrect answers
 
-        📊 Track learning progress
+📊 Track learning progress
 
-        📅 Get personalized learning recommendations
-        """
+📅 Get personalized recommendations
+"""
     )
 
     st.divider()
@@ -782,18 +1038,23 @@ if sidebar_page == "🏠 Home":
     col1, col2, col3 = st.columns(3)
 
     with col1:
+
         st.metric(
             "Questions Generated",
-            len(st.session_state.questions)
+            len(
+                st.session_state.questions
+            )
         )
 
     with col2:
+
         st.metric(
             "Latest Score",
             f"{st.session_state.percentage:.1f}%"
         )
 
     with col3:
+
         st.metric(
             "Current Step",
             f"{st.session_state.current_step}/5"
@@ -805,6 +1066,7 @@ if sidebar_page == "🏠 Home":
         "🚀 Start Learning",
         use_container_width=True
     ):
+
         go_to_step(1)
 
 
@@ -814,22 +1076,25 @@ if sidebar_page == "🏠 Home":
 
 elif sidebar_page == "📚 Learning Material":
 
-    st.title("📚 Step 1 — Learning Material")
-
-    st.write(
-        "Upload a PDF or enter your learning material manually."
+    st.title(
+        "📚 Step 1 — Learning Material"
     )
 
-    # -----------------------------------------------------
-    # PDF UPLOAD
-    # -----------------------------------------------------
+    st.write(
+        "Upload a PDF or paste your learning material."
+    )
 
-    st.subheader("📤 Upload Learning Material")
+    # =====================================================
+    # PDF UPLOAD
+    # =====================================================
+
+    st.subheader(
+        "📤 Upload PDF"
+    )
 
     uploaded_file = st.file_uploader(
-        "Upload your learning material as a PDF",
-        type=["pdf"],
-        help="Upload a text-based PDF for automatic text extraction."
+        "Choose your learning material",
+        type=["pdf"]
     )
 
     if uploaded_file is not None:
@@ -841,8 +1106,7 @@ elif sidebar_page == "📚 Learning Material":
             )
 
             st.code(
-                "pip install PyPDF2",
-                language="bash"
+                "pip install PyPDF2"
             )
 
         else:
@@ -854,18 +1118,22 @@ elif sidebar_page == "📚 Learning Material":
 
                 try:
 
-                    reader = PdfReader(uploaded_file)
+                    reader = PdfReader(
+                        uploaded_file
+                    )
 
                     extracted_text = ""
 
                     for page in reader.pages:
 
-                        page_text = page.extract_text()
+                        page_text = (
+                            page.extract_text()
+                            or ""
+                        )
 
-                        if page_text:
-                            extracted_text += (
-                                page_text + "\n"
-                            )
+                        extracted_text += (
+                            page_text + "\n"
+                        )
 
                     if extracted_text.strip():
 
@@ -880,26 +1148,23 @@ elif sidebar_page == "📚 Learning Material":
                             )[0]
                         )
 
-                        st.session_state.pdf_loaded = True
-
                         st.session_state.last_uploaded_file = (
                             uploaded_file.name
                         )
 
                         st.success(
-                            f"✅ PDF loaded successfully: "
-                            f"{uploaded_file.name}"
+                            "✅ PDF uploaded successfully!"
                         )
 
                     else:
 
                         st.error(
-                            "❌ Could not extract text from this PDF."
+                            "❌ No text could be extracted."
                         )
 
                         st.info(
-                            "This may be a scanned/image-only PDF. "
-                            "Try a text-based PDF or paste the text manually."
+                            "If the PDF is scanned, "
+                            "paste the text manually."
                         )
 
                 except Exception as e:
@@ -908,13 +1173,15 @@ elif sidebar_page == "📚 Learning Material":
                         f"❌ Error reading PDF: {e}"
                     )
 
-    # -----------------------------------------------------
-    # MANUAL INPUT
-    # -----------------------------------------------------
+    # =====================================================
+    # MATERIAL EDITOR
+    # =====================================================
 
     st.divider()
 
-    st.subheader("✍️ Enter / Edit Learning Material")
+    st.subheader(
+        "✍️ Learning Material"
+    )
 
     material_name = st.text_input(
         "Material Name",
@@ -923,17 +1190,15 @@ elif sidebar_page == "📚 Learning Material":
     )
 
     material_text = st.text_area(
-        "Learning Material",
+        "Material Text",
         value=st.session_state.material_text,
         height=350,
-        placeholder=(
-            "Paste your learning material here..."
-        )
+        placeholder="Paste your learning material here..."
     )
 
-    # -----------------------------------------------------
-    # SAVE MATERIAL
-    # -----------------------------------------------------
+    st.caption(
+        f"Word count: {len(material_text.split())}"
+    )
 
     col1, col2 = st.columns(2)
 
@@ -947,14 +1212,15 @@ elif sidebar_page == "📚 Learning Material":
             if not material_text.strip():
 
                 st.error(
-                    "Please upload a PDF or enter learning material."
+                    "Please upload a PDF or enter text."
                 )
 
-            elif len(material_text.split()) < 5:
+            elif len(
+                material_text.split()
+            ) < 5:
 
                 st.error(
-                    "Please provide more learning material "
-                    "so questions can be generated."
+                    "Please provide more learning material."
                 )
 
             else:
@@ -965,8 +1231,8 @@ elif sidebar_page == "📚 Learning Material":
 
                 st.session_state.material_name = (
                     material_name.strip()
-                    if material_name.strip()
-                    else "Learning Material"
+                    or
+                    "Learning Material"
                 )
 
                 st.session_state.material_saved = True
@@ -977,10 +1243,11 @@ elif sidebar_page == "📚 Learning Material":
                 )
 
                 st.success(
-                    "✅ Learning material saved successfully!"
+                    "✅ Learning material saved!"
                 )
 
                 if material_id:
+
                     st.caption(
                         f"Material ID: {material_id}"
                     )
@@ -995,10 +1262,12 @@ elif sidebar_page == "📚 Learning Material":
             if not material_text.strip():
 
                 st.error(
-                    "Please upload a PDF or enter learning material first."
+                    "Please upload a PDF or enter text."
                 )
 
-            elif len(material_text.split()) < 5:
+            elif len(
+                material_text.split()
+            ) < 5:
 
                 st.error(
                     "Please provide more learning material."
@@ -1012,8 +1281,8 @@ elif sidebar_page == "📚 Learning Material":
 
                 st.session_state.material_name = (
                     material_name.strip()
-                    if material_name.strip()
-                    else "Learning Material"
+                    or
+                    "Learning Material"
                 )
 
                 go_to_step(2)
@@ -1025,15 +1294,20 @@ elif sidebar_page == "📚 Learning Material":
 
 elif sidebar_page == "📝 Generate Questions":
 
-    st.title("📝 Step 2 — Generate Questions")
+    st.title(
+        "📝 Step 2 — Generate Questions"
+    )
 
     if not st.session_state.material_text:
 
         st.warning(
-            "⚠️ Please upload or enter learning material first."
+            "⚠️ Please upload learning material first."
         )
 
-        if st.button("📚 Go to Learning Material"):
+        if st.button(
+            "📚 Go to Learning Material"
+        ):
+
             go_to_step(1)
 
     else:
@@ -1043,19 +1317,15 @@ elif sidebar_page == "📝 Generate Questions":
             f"{st.session_state.material_name}"
         )
 
-        word_count = len(
-            st.session_state.material_text.split()
-        )
-
-        st.caption(
-            f"Material contains approximately "
-            f"{word_count} words."
+        st.write(
+            f"Words: "
+            f"{len(st.session_state.material_text.split())}"
         )
 
         st.divider()
 
         question_count = st.slider(
-            "How many questions do you want?",
+            "Number of Questions",
             min_value=1,
             max_value=20,
             value=5
@@ -1079,7 +1349,9 @@ elif sidebar_page == "📝 Generate Questions":
 
                     if questions:
 
-                        st.session_state.questions = questions
+                        st.session_state.questions = (
+                            questions
+                        )
 
                         st.session_state.total_questions = (
                             len(questions)
@@ -1093,7 +1365,9 @@ elif sidebar_page == "📝 Generate Questions":
                             questions
                         )
 
-                        st.session_state.quiz_id = quiz_id
+                        st.session_state.quiz_id = (
+                            quiz_id
+                        )
 
                         st.success(
                             f"✅ {len(questions)} questions generated!"
@@ -1102,8 +1376,7 @@ elif sidebar_page == "📝 Generate Questions":
                     else:
 
                         st.error(
-                            "❌ No questions could be generated. "
-                            "Please provide more detailed learning material."
+                            "❌ No questions were generated."
                         )
 
                 except Exception as e:
@@ -1112,15 +1385,17 @@ elif sidebar_page == "📝 Generate Questions":
                         f"❌ Error generating questions: {e}"
                     )
 
-        # -------------------------------------------------
+        # =================================================
         # QUESTION PREVIEW
-        # -------------------------------------------------
+        # =================================================
 
         if st.session_state.questions:
 
             st.divider()
 
-            st.subheader("👀 Question Preview")
+            st.subheader(
+                "👀 Question Preview"
+            )
 
             for i, question in enumerate(
                 st.session_state.questions,
@@ -1128,24 +1403,31 @@ elif sidebar_page == "📝 Generate Questions":
             ):
 
                 st.markdown(
-                    f"### Question {i}"
+                    f"### Q{i}. "
+                    f"{get_question_text(question)}"
                 )
 
-                st.write(
-                    get_question_text(question)
+                options = get_options(
+                    question
                 )
 
-                options = get_options(question)
+                if options:
 
-                for j, option in enumerate(
-                    options
-                ):
+                    for j, option in enumerate(
+                        options
+                    ):
 
-                    st.write(
-                        f"{chr(65+j)}. {option}"
+                        st.write(
+                            f"**{chr(65+j)}.** {option}"
+                        )
+
+                else:
+
+                    st.error(
+                        "⚠️ Options are missing."
                     )
 
-                st.divider()
+            st.divider()
 
             if st.button(
                 "➡️ NEXT: Take Assessment",
@@ -1161,513 +1443,569 @@ elif sidebar_page == "📝 Generate Questions":
 
 elif sidebar_page == "✍️ Take Assessment":
 
-    st.title("✍️ Step 3 — Take Assessment")
+    st.title(
+        "✍️ Step 3 — Take Assessment"
+    )
 
     if not st.session_state.questions:
 
         st.warning(
-            "⚠️ Please generate questions first."
+            "⚠️ No questions available."
         )
 
-        if st.button("📝 Go to Generate Questions"):
+        if st.button(
+            "📝 Generate Questions"
+        ):
+
             go_to_step(2)
 
-    else:
+    # =====================================================
+    # BEFORE SUBMISSION
+    # =====================================================
 
-        if not st.session_state.quiz_submitted:
+    elif not st.session_state.quiz_submitted:
 
-            st.info(
-                f"Answer all "
-                f"{len(st.session_state.questions)} questions."
+        st.info(
+            f"📝 Answer all "
+            f"{len(st.session_state.questions)} questions."
+        )
+
+        st.divider()
+
+        for i, question in enumerate(
+            st.session_state.questions
+        ):
+
+            question_text = get_question_text(
+                question
             )
 
-            st.divider()
+            st.markdown(
+                f"### Q{i + 1}. {question_text}"
+            )
 
-            for i, question in enumerate(
-                st.session_state.questions
-            ):
+            options = get_options(
+                question
+            )
 
-                q_text = get_question_text(question)
+            # =================================================
+            # CLICKABLE OPTIONS
+            # =================================================
 
-                options = get_options(question)
+            if options:
 
-                st.markdown(
-                    f"### Q{i+1}. {q_text}"
-                )
+                # Create A/B/C/D display
+                display_options = []
 
-                if not options:
+                for j, option in enumerate(
+                    options
+                ):
 
-                    st.warning(
-                        "No options found for this question."
+                    letter = chr(
+                        65 + j
                     )
 
-                    continue
+                    display_options.append(
+                        f"{letter}. {option}"
+                    )
 
-                answer = st.radio(
-                    "Select your answer:",
-                    options,
-                    key=f"question_{i}",
+                selected = st.radio(
+                    "Select one answer:",
+                    display_options,
+                    key=f"question_answer_{i}",
                     index=None
                 )
 
-                st.session_state.assessment_answers[
-                    i
-                ] = answer
+                # Save selected option
+                if selected:
 
-                st.divider()
+                    selected_index = (
+                        display_options.index(
+                            selected
+                        )
+                    )
 
-            if st.button(
-                "✅ Submit Assessment",
-                use_container_width=True
+                    st.session_state.assessment_answers[
+                        i
+                    ] = options[
+                        selected_index
+                    ]
+
+            else:
+
+                st.error(
+                    "❌ No options available for this question."
+                )
+
+            st.divider()
+
+        # =====================================================
+        # SUBMIT BUTTON
+        # =====================================================
+
+        if st.button(
+            "✅ Submit Assessment",
+            use_container_width=True
+        ):
+
+            unanswered = []
+
+            for i in range(
+                len(
+                    st.session_state.questions
+                )
             ):
 
-                unanswered = []
+                answer = (
+                    st.session_state
+                    .assessment_answers
+                    .get(i)
+                )
 
-                for i in range(
-                    len(st.session_state.questions)
+                if not answer:
+
+                    unanswered.append(
+                        i + 1
+                    )
+
+            if unanswered:
+
+                st.error(
+                    "⚠️ Please answer all questions."
+                )
+
+                st.write(
+                    "Unanswered questions:",
+                    ", ".join(
+                        map(
+                            str,
+                            unanswered
+                        )
+                    )
+                )
+
+            else:
+
+                score = 0
+
+                for i, question in enumerate(
+                    st.session_state.questions
                 ):
 
-                    answer = st.session_state.assessment_answers.get(
-                        i
+                    user_answer = (
+                        st.session_state
+                        .assessment_answers[i]
                     )
 
-                    if not answer:
-                        unanswered.append(i + 1)
-
-                if unanswered:
-
-                    st.error(
-                        "Please answer all questions before submitting."
-                    )
-
-                    st.write(
-                        "Unanswered questions:",
-                        ", ".join(
-                            map(str, unanswered)
+                    correct_answer = (
+                        get_correct_option(
+                            question
                         )
                     )
-
-                else:
-
-                    score = 0
-
-                    for i, question in enumerate(
-                        st.session_state.questions
-                    ):
-
-                        user_answer = (
-                            st.session_state.assessment_answers.get(
-                                i,
-                                ""
-                            )
-                        )
-
-                        correct_answer = (
-                            find_correct_option(question)
-                        )
-
-                        if (
-                            user_answer.strip().lower()
-                            ==
-                            correct_answer.strip().lower()
-                        ):
-
-                            score += 1
-
-                    total = len(
-                        st.session_state.questions
-                    )
-
-                    percentage = (
-                        score / total * 100
-                        if total > 0
-                        else 0
-                    )
-
-                    st.session_state.score = score
-
-                    st.session_state.total_questions = total
-
-                    st.session_state.percentage = percentage
-
-                    st.session_state.quiz_submitted = True
-
-                    save_attempt_to_db(
-                        st.session_state.quiz_id,
-                        score,
-                        total,
-                        percentage
-                    )
-
-                    st.rerun()
-
-        # =================================================
-        # RESULTS + EXPLANATIONS
-        # =================================================
-
-        else:
-
-            st.success(
-                "🎉 Assessment Submitted Successfully!"
-            )
-
-            score = st.session_state.score
-
-            total = st.session_state.total_questions
-
-            percentage = st.session_state.percentage
-
-            performance = calculate_performance(
-                percentage
-            )
-
-            st.divider()
-
-            st.subheader("📊 Your Result")
-
-            col1, col2, col3, col4 = st.columns(4)
-
-            with col1:
-                st.metric(
-                    "Score",
-                    f"{score}/{total}"
-                )
-
-            with col2:
-                st.metric(
-                    "Percentage",
-                    f"{percentage:.1f}%"
-                )
-
-            with col3:
-
-                correct = score
-
-                incorrect = total - score
-
-                st.metric(
-                    "Correct",
-                    correct
-                )
-
-            with col4:
-
-                st.metric(
-                    "Incorrect",
-                    incorrect
-                )
-
-            st.info(
-                f"Performance: **{performance}**"
-            )
-
-            st.divider()
-
-            # =============================================
-            # DETAILED QUESTION REVIEW
-            # =============================================
-
-            st.subheader(
-                "💡 Detailed Question Explanations"
-            )
-
-            topic_results = {}
-
-            for i, question in enumerate(
-                st.session_state.questions
-            ):
-
-                q_text = get_question_text(
-                    question
-                )
-
-                topic = get_question_topic(
-                    question
-                )
-
-                concept = get_question_concept(
-                    question
-                )
-
-                options = get_options(
-                    question
-                )
-
-                correct_answer = find_correct_option(
-                    question
-                )
-
-                user_answer = (
-                    st.session_state.assessment_answers.get(
-                        i,
-                        "Not answered"
-                    )
-                )
-
-                is_correct = (
-                    user_answer.strip().lower()
-                    ==
-                    correct_answer.strip().lower()
-                )
-
-                # Topic result
-                if topic not in topic_results:
-                    topic_results[topic] = {
-                        "correct": 0,
-                        "total": 0
-                    }
-
-                topic_results[topic]["total"] += 1
-
-                if is_correct:
-                    topic_results[topic]["correct"] += 1
-
-                # Question header
-                if is_correct:
-
-                    st.success(
-                        f"### Q{i+1}. ✅ Correct"
-                    )
-
-                else:
-
-                    st.error(
-                        f"### Q{i+1}. ❌ Incorrect"
-                    )
-
-                st.write(
-                    f"**Question:** {q_text}"
-                )
-
-                st.write(
-                    f"**Topic:** {topic}"
-                )
-
-                st.write(
-                    f"**Concept:** {concept}"
-                )
-
-                st.write(
-                    f"**Your Answer:** "
-                    f"{user_answer}"
-                )
-
-                st.write(
-                    f"**Correct Answer:** "
-                    f"{correct_answer}"
-                )
-
-                # -----------------------------------------
-                # WHY CORRECT?
-                # -----------------------------------------
-
-                st.markdown(
-                    "#### ✅ Why is this answer correct?"
-                )
-
-                explanation = get_general_explanation(
-                    question
-                )
-
-                if explanation:
-
-                    st.info(
-                        explanation
-                    )
-
-                else:
-
-                    st.info(
-                        f"**{correct_answer}** is correct "
-                        f"because it matches the fundamental "
-                        f"concept being tested in **{topic}**."
-                    )
-
-                # -----------------------------------------
-                # WHY OTHER OPTIONS ARE WRONG?
-                # -----------------------------------------
-
-                st.markdown(
-                    "#### ❌ Why are the other options incorrect?"
-                )
-
-                for option in options:
 
                     if (
-                        option.strip().lower()
+                        user_answer.strip().lower()
                         ==
                         correct_answer.strip().lower()
                     ):
-                        continue
 
-                    option_feedback = get_option_feedback(
+                        score += 1
+
+                total = len(
+                    st.session_state.questions
+                )
+
+                percentage = (
+                    score / total * 100
+                    if total > 0
+                    else 0
+                )
+
+                st.session_state.score = (
+                    score
+                )
+
+                st.session_state.total_questions = (
+                    total
+                )
+
+                st.session_state.percentage = (
+                    percentage
+                )
+
+                st.session_state.quiz_submitted = (
+                    True
+                )
+
+                save_attempt_to_db(
+                    st.session_state.quiz_id,
+                    score,
+                    total,
+                    percentage
+                )
+
+                st.rerun()
+
+    # =====================================================
+    # AFTER SUBMISSION
+    # =====================================================
+
+    else:
+
+        st.success(
+            "🎉 Assessment Submitted Successfully!"
+        )
+
+        score = st.session_state.score
+
+        total = st.session_state.total_questions
+
+        percentage = st.session_state.percentage
+
+        st.divider()
+
+        # =================================================
+        # SCORE
+        # =================================================
+
+        st.subheader(
+            "📊 Your Result"
+        )
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        with col1:
+
+            st.metric(
+                "Score",
+                f"{score}/{total}"
+            )
+
+        with col2:
+
+            st.metric(
+                "Percentage",
+                f"{percentage:.1f}%"
+            )
+
+        with col3:
+
+            st.metric(
+                "Correct",
+                score
+            )
+
+        with col4:
+
+            st.metric(
+                "Incorrect",
+                total - score
+            )
+
+        st.info(
+            f"Performance: "
+            f"**{performance_level(percentage)}**"
+        )
+
+        st.divider()
+
+        # =================================================
+        # DETAILED REVIEW
+        # =================================================
+
+        st.subheader(
+            "💡 Detailed Question Review"
+        )
+
+        topic_results = {}
+
+        for i, question in enumerate(
+            st.session_state.questions
+        ):
+
+            question_text = get_question_text(
+                question
+            )
+
+            topic = get_topic(
+                question
+            )
+
+            concept = get_concept(
+                question
+            )
+
+            options = get_options(
+                question
+            )
+
+            correct_answer = get_correct_option(
+                question
+            )
+
+            user_answer = (
+                st.session_state
+                .assessment_answers
+                .get(
+                    i,
+                    "Not answered"
+                )
+            )
+
+            is_correct = (
+                user_answer.strip().lower()
+                ==
+                correct_answer.strip().lower()
+            )
+
+            # Topic tracking
+            if topic not in topic_results:
+
+                topic_results[topic] = {
+                    "correct": 0,
+                    "total": 0
+                }
+
+            topic_results[topic]["total"] += 1
+
+            if is_correct:
+
+                topic_results[topic]["correct"] += 1
+
+                st.success(
+                    f"### Q{i+1}. ✅ Correct"
+                )
+
+            else:
+
+                st.error(
+                    f"### Q{i+1}. ❌ Incorrect"
+                )
+
+            st.write(
+                f"**Question:** {question_text}"
+            )
+
+            st.write(
+                f"**Topic:** {topic}"
+            )
+
+            st.write(
+                f"**Concept:** {concept}"
+            )
+
+            st.write(
+                f"**Your Answer:** {user_answer}"
+            )
+
+            st.write(
+                f"**Correct Answer:** "
+                f"{correct_answer}"
+            )
+
+            # =================================================
+            # WHY CORRECT?
+            # =================================================
+
+            st.markdown(
+                "#### ✅ Why is this answer correct?"
+            )
+
+            explanation = get_explanation(
+                question
+            )
+
+            if explanation:
+
+                st.info(
+                    explanation
+                )
+
+            else:
+
+                st.info(
+                    f"**{correct_answer}** is correct "
+                    f"because it matches the concept "
+                    f"being tested in **{topic}**."
+                )
+
+            # =================================================
+            # WHY WRONG?
+            # =================================================
+
+            st.markdown(
+                "#### ❌ Why are the other options incorrect?"
+            )
+
+            for option in options:
+
+                if (
+                    option.lower()
+                    ==
+                    correct_answer.lower()
+                ):
+
+                    continue
+
+                feedback = get_option_feedback(
+                    question,
+                    option
+                )
+
+                if not feedback:
+
+                    feedback = explain_wrong_option(
                         question,
                         option
                     )
 
-                    if option_feedback:
-
-                        st.write(
-                            f"❌ **{option}** — "
-                            f"{option_feedback}"
-                        )
-
-                    else:
-
-                        feedback = explain_incorrect_option(
-                            question,
-                            option
-                        )
-
-                        st.write(
-                            f"❌ **{option}** — "
-                            f"{feedback}"
-                        )
-
-                # -----------------------------------------
-                # TOPIC EXPLANATION
-                # -----------------------------------------
-
-                if st.session_state.show_topic_explanations:
-
-                    with st.expander(
-                        f"📚 Learn More About: {topic}"
-                    ):
-
-                        st.markdown(
-                            create_topic_explanation(
-                                topic
-                            )
-                        )
-
-                st.divider()
-
-            # =============================================
-            # WEAK TOPICS
-            # =============================================
-
-            st.subheader(
-                "📌 Topic-wise Performance"
-            )
-
-            topic_rows = []
-
-            for topic, result in topic_results.items():
-
-                topic_total = result["total"]
-
-                topic_correct = result["correct"]
-
-                topic_percentage = (
-                    topic_correct
-                    / topic_total
-                    * 100
-                    if topic_total
-                    else 0
+                st.write(
+                    f"❌ **{option}** — "
+                    f"{feedback}"
                 )
 
-                topic_rows.append(
-                    {
-                        "Topic": topic,
-                        "Correct": topic_correct,
-                        "Total": topic_total,
-                        "Performance":
-                            f"{topic_percentage:.1f}%"
-                    }
-                )
+            # =================================================
+            # TOPIC EXPLANATION
+            # =================================================
 
-            if topic_rows:
+            with st.expander(
+                f"📚 Learn More About: {topic}"
+            ):
 
-                df = pd.DataFrame(
-                    topic_rows
-                )
-
-                st.dataframe(
-                    df,
-                    use_container_width=True,
-                    hide_index=True
-                )
-
-            # =============================================
-            # RECOMMENDATIONS
-            # =============================================
-
-            st.subheader(
-                "🤖 Personalized Recommendation"
-            )
-
-            weak_topics = []
-
-            for topic, result in topic_results.items():
-
-                topic_percentage = (
-                    result["correct"]
-                    / result["total"]
-                    * 100
-                    if result["total"]
-                    else 0
-                )
-
-                if topic_percentage < 60:
-
-                    weak_topics.append(
+                st.markdown(
+                    topic_explanation(
                         topic
                     )
-
-            if weak_topics:
-
-                st.warning(
-                    "You need more practice in: "
-                    + ", ".join(weak_topics)
-                )
-
-                for topic in weak_topics:
-
-                    st.write(
-                        f"📚 Revise **{topic}** and "
-                        f"practice more questions on this topic."
-                    )
-
-            else:
-
-                st.success(
-                    "🌟 Great job! You are performing well "
-                    "across the tested topics."
                 )
 
             st.divider()
 
-            # =============================================
-            # NEXT ACTIONS
-            # =============================================
+        # =================================================
+        # TOPIC PERFORMANCE
+        # =================================================
 
-            col1, col2 = st.columns(2)
+        st.subheader(
+            "📌 Topic-wise Performance"
+        )
 
-            with col1:
+        topic_rows = []
 
-                if st.button(
-                    "🔄 Retake Assessment",
-                    use_container_width=True
-                ):
+        for topic, result in (
+            topic_results.items()
+        ):
 
-                    st.session_state.assessment_answers = {}
+            correct = result["correct"]
 
-                    st.session_state.quiz_submitted = False
+            topic_total = result["total"]
 
-                    go_to_step(3)
+            topic_percentage = (
+                correct
+                /
+                topic_total
+                *
+                100
+                if topic_total
+                else 0
+            )
 
-            with col2:
+            topic_rows.append(
+                {
+                    "Topic": topic,
 
-                if st.button(
-                    "➡️ Go to Progress",
-                    use_container_width=True
-                ):
+                    "Correct": correct,
 
-                    st.session_state.quiz_history = (
-                        load_quiz_history()
-                    )
+                    "Total": topic_total,
 
-                    go_to_step(4)
+                    "Performance":
+                        f"{topic_percentage:.1f}%"
+                }
+            )
+
+        if topic_rows:
+
+            st.dataframe(
+                pd.DataFrame(
+                    topic_rows
+                ),
+                use_container_width=True,
+                hide_index=True
+            )
+
+        # =================================================
+        # WEAK TOPICS
+        # =================================================
+
+        st.subheader(
+            "📌 Areas to Improve"
+        )
+
+        weak_topics = []
+
+        for topic, result in (
+            topic_results.items()
+        ):
+
+            topic_percentage = (
+                result["correct"]
+                /
+                result["total"]
+                *
+                100
+                if result["total"]
+                else 0
+            )
+
+            if topic_percentage < 60:
+
+                weak_topics.append(
+                    topic
+                )
+
+        if weak_topics:
+
+            st.warning(
+                "📚 Revise these topics: "
+                +
+                ", ".join(
+                    weak_topics
+                )
+            )
+
+        else:
+
+            st.success(
+                "🌟 Great job! You performed well across the tested topics."
+            )
+
+        st.divider()
+
+        # =================================================
+        # NEXT ACTIONS
+        # =================================================
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+
+            if st.button(
+                "🔄 Retake Assessment",
+                use_container_width=True
+            ):
+
+                st.session_state.assessment_answers = {}
+
+                st.session_state.quiz_submitted = False
+
+                go_to_step(3)
+
+        with col2:
+
+            if st.button(
+                "➡️ Go to Progress",
+                use_container_width=True
+            ):
+
+                go_to_step(4)
 
 
 # =========================================================
@@ -1676,10 +2014,8 @@ elif sidebar_page == "✍️ Take Assessment":
 
 elif sidebar_page == "📊 Progress":
 
-    st.title("📊 Step 4 — Progress")
-
-    st.subheader(
-        "📈 Your Learning Progress"
+    st.title(
+        "📊 Step 4 — Progress"
     )
 
     if st.session_state.total_questions > 0:
@@ -1687,6 +2023,7 @@ elif sidebar_page == "📊 Progress":
         col1, col2, col3 = st.columns(3)
 
         with col1:
+
             st.metric(
                 "Latest Score",
                 f"{st.session_state.score}/"
@@ -1694,15 +2031,17 @@ elif sidebar_page == "📊 Progress":
             )
 
         with col2:
+
             st.metric(
                 "Percentage",
                 f"{st.session_state.percentage:.1f}%"
             )
 
         with col3:
+
             st.metric(
                 "Performance",
-                calculate_performance(
+                performance_level(
                     st.session_state.percentage
                 )
             )
@@ -1715,7 +2054,6 @@ elif sidebar_page == "📊 Progress":
 
     st.divider()
 
-    # Load history
     history = load_quiz_history()
 
     if history:
@@ -1731,15 +2069,15 @@ elif sidebar_page == "📊 Progress":
             rows.append(
                 {
                     "Score":
-                        item.get("score", "-"),
+                        item.get(
+                            "score",
+                            "-"
+                        ),
 
                     "Total":
                         item.get(
                             "total_questions",
-                            item.get(
-                                "total",
-                                "-"
-                            )
+                            "-"
                         ),
 
                     "Percentage":
@@ -1756,13 +2094,11 @@ elif sidebar_page == "📊 Progress":
                 }
             )
 
-        if rows:
-
-            st.dataframe(
-                pd.DataFrame(rows),
-                use_container_width=True,
-                hide_index=True
-            )
+        st.dataframe(
+            pd.DataFrame(rows),
+            use_container_width=True,
+            hide_index=True
+        )
 
     else:
 
@@ -1786,58 +2122,58 @@ elif sidebar_page == "📊 Progress":
 
 elif sidebar_page == "📅 Learning Plan":
 
-    st.title("📅 Step 5 — Personalized Learning Plan")
-
-    st.write(
-        "Your learning plan is based on your assessment performance."
+    st.title(
+        "📅 Step 5 — Personalized Learning Plan"
     )
 
-    percentage = st.session_state.percentage
+    percentage = (
+        st.session_state.percentage
+    )
 
     if percentage >= 80:
 
         st.success(
             """
-            🌟 **Strong Performance**
+### 🌟 Strong Performance
 
-            Recommended plan:
+Recommended plan:
 
-            1. Review the concepts briefly.
-            2. Solve advanced questions.
-            3. Start the next topic.
-            4. Take another assessment to confirm mastery.
-            """
+1. Review concepts briefly.
+2. Solve advanced questions.
+3. Move to the next topic.
+4. Take another assessment.
+"""
         )
 
     elif percentage >= 60:
 
         st.info(
             """
-            👍 **Good Progress**
+### 👍 Good Progress
 
-            Recommended plan:
+Recommended plan:
 
-            1. Review concepts where you made mistakes.
-            2. Practice medium-level questions.
-            3. Revise important definitions and examples.
-            4. Retake the assessment.
-            """
+1. Review incorrect answers.
+2. Practice medium-level questions.
+3. Revise important concepts.
+4. Retake the assessment.
+"""
         )
 
     else:
 
         st.warning(
             """
-            📚 **More Practice Recommended**
+### 📚 More Practice Recommended
 
-            Recommended plan:
+Recommended plan:
 
-            1. Re-read the learning material.
-            2. Focus on weak concepts.
-            3. Practice basic questions.
-            4. Review explanations after every question.
-            5. Retake the assessment.
-            """
+1. Read the learning material again.
+2. Focus on weak topics.
+3. Practice basic questions.
+4. Review explanations carefully.
+5. Retake the assessment.
+"""
         )
 
     st.divider()
@@ -1845,19 +2181,24 @@ elif sidebar_page == "📅 Learning Plan":
     if st.session_state.questions:
 
         st.subheader(
-            "📌 Topics from Your Assessment"
+            "📌 Topics Covered"
         )
 
         topics = []
 
-        for question in st.session_state.questions:
+        for question in (
+            st.session_state.questions
+        ):
 
-            topic = get_question_topic(
+            topic = get_topic(
                 question
             )
 
             if topic not in topics:
-                topics.append(topic)
+
+                topics.append(
+                    topic
+                )
 
         for topic in topics:
 
@@ -1868,7 +2209,7 @@ elif sidebar_page == "📅 Learning Plan":
     st.divider()
 
     if st.button(
-        "📚 Go to Learning Material",
+        "📚 Back to Learning Material",
         use_container_width=True
     ):
 
@@ -1881,50 +2222,17 @@ elif sidebar_page == "📅 Learning Plan":
 
 elif sidebar_page == "🔧 System Check":
 
-    st.title("🔧 System Check")
-
-    st.subheader(
-        "Application Components"
+    st.title(
+        "🔧 System Check"
     )
 
     # Streamlit
     st.success(
-        "✅ Streamlit is running"
+        "✅ Streamlit is working"
     )
 
-    # MCQ generator
-    try:
-
-        test_questions = generate_mcqs(
-            "Python is a programming language. "
-            "Python supports variables, loops, functions and lists.",
-            2
-        )
-
-        if test_questions:
-
-            st.success(
-                "✅ MCQ Generator is working"
-            )
-
-            st.write(
-                f"Generated {len(test_questions)} test questions."
-            )
-
-        else:
-
-            st.error(
-                "❌ MCQ Generator returned no questions"
-            )
-
-    except Exception as e:
-
-        st.error(
-            f"❌ MCQ Generator error: {e}"
-        )
-
-    # PDF
-    if PdfReader is not None:
+    # PyPDF2
+    if PdfReader:
 
         st.success(
             "✅ PyPDF2 is installed"
@@ -1937,12 +2245,52 @@ elif sidebar_page == "🔧 System Check":
         )
 
         st.code(
-            "pip install PyPDF2",
-            language="bash"
+            "pip install PyPDF2"
+        )
+
+    # MCQ generator
+    try:
+
+        test_questions = generate_mcqs(
+            """
+            Python is a programming language.
+            Python supports variables, loops,
+            functions and lists.
+            """,
+            2
+        )
+
+        if test_questions:
+
+            st.success(
+                f"✅ MCQ Generator is working "
+                f"({len(test_questions)} questions)"
+            )
+
+            with st.expander(
+                "🔍 View Generated Question Data"
+            ):
+
+                for question in test_questions:
+
+                    st.json(
+                        question
+                    )
+
+        else:
+
+            st.error(
+                "❌ MCQ Generator returned no questions."
+            )
+
+    except Exception as e:
+
+        st.error(
+            f"❌ MCQ Generator error: {e}"
         )
 
     # Supabase
-    if supabase is not None:
+    if supabase:
 
         st.success(
             "✅ Supabase connection initialized"
@@ -1957,11 +2305,7 @@ elif sidebar_page == "🔧 System Check":
     st.divider()
 
     st.subheader(
-        "📁 Project Information"
-    )
-
-    st.write(
-        f"**User ID:** {st.session_state.user_id}"
+        "📊 Current Application State"
     )
 
     st.write(
@@ -1980,11 +2324,7 @@ elif sidebar_page == "🔧 System Check":
     )
 
     st.write(
-        f"**Database:** "
-        f"{db_status}"
-    )
-
-    st.write(
-        f"**PDF Support:** "
-        f"{'Available' if PdfReader else 'Not Available'}"
+        f"**Score:** "
+        f"{st.session_state.score}/"
+        f"{st.session_state.total_questions}"
     )
