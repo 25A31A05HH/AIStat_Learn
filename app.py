@@ -1,13 +1,15 @@
-
 import os
+import uuid
+import json
 import streamlit as st
 import pandas as pd
 
 from mcq_generator import generate_mcqs
 
-
 # ============================================================
-# PAGE CONFIG
+# AIStat Learn - Persistent Version
+# Supabase is used to keep learning material, quizzes,
+# answers, scores and progress after page refresh.
 # ============================================================
 
 st.set_page_config(
@@ -18,38 +20,475 @@ st.set_page_config(
 
 
 # ============================================================
+# SUPABASE CONNECTION
+# ============================================================
+
+def get_supabase_client():
+    """Create a Supabase client from Streamlit secrets."""
+    try:
+        from supabase import create_client
+
+        url = st.secrets.get("SUPABASE_URL", "")
+        key = st.secrets.get("SUPABASE_KEY", "")
+
+        if not url or not key:
+            return None
+
+        return create_client(url, key)
+
+    except Exception:
+        return None
+
+
+supabase = get_supabase_client()
+
+
+# ============================================================
+# USER / SESSION ID
+# ============================================================
+
+def get_user_id():
+    """
+    Keep a browser-level user id in the URL so the same browser
+    can recover its data after a Streamlit refresh.
+    """
+    try:
+        existing_id = st.query_params.get("user_id")
+
+        if existing_id:
+            return str(existing_id)
+
+        new_id = str(uuid.uuid4())
+        st.query_params["user_id"] = new_id
+        return new_id
+
+    except Exception:
+        if "local_user_id" not in st.session_state:
+            st.session_state.local_user_id = str(uuid.uuid4())
+
+        return st.session_state.local_user_id
+
+
+USER_ID = get_user_id()
+
+
+# ============================================================
 # SESSION STATE
 # ============================================================
 
-if "learning_material" not in st.session_state:
-    st.session_state.learning_material = ""
+DEFAULTS = {
+    "learning_material": "",
+    "material_id": None,
+    "material_title": "",
+    "generated_questions": [],
+    "quiz_id": None,
+    "assessment_answers": {},
+    "quiz_submitted": False,
+    "quiz_score": 0,
+    "quiz_total": 0,
+    "quiz_percentage": 0.0,
+    "quiz_results": [],
+    "first_scores": [],
+    "second_scores": [],
+    "loaded_from_database": False,
+}
 
-if "generated_questions" not in st.session_state:
-    st.session_state.generated_questions = []
+for key, value in DEFAULTS.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
 
-if "assessment_answers" not in st.session_state:
-    st.session_state.assessment_answers = {}
 
-if "quiz_submitted" not in st.session_state:
-    st.session_state.quiz_submitted = False
+# ============================================================
+# DATABASE HELPERS
+# ============================================================
 
-if "quiz_score" not in st.session_state:
-    st.session_state.quiz_score = 0
+def db_available():
+    return supabase is not None
 
-if "quiz_total" not in st.session_state:
-    st.session_state.quiz_total = 0
 
-if "quiz_percentage" not in st.session_state:
-    st.session_state.quiz_percentage = 0
+def save_material_to_db(title, content):
+    """Save learning material and return its database id."""
+    if not db_available():
+        return None
 
-if "quiz_results" not in st.session_state:
-    st.session_state.quiz_results = []
+    try:
+        response = (
+            supabase
+            .table("learning_materials")
+            .insert(
+                {
+                    "user_id": USER_ID,
+                    "title": title,
+                    "content": content,
+                }
+            )
+            .execute()
+        )
 
-if "first_scores" not in st.session_state:
-    st.session_state.first_scores = []
+        if response.data:
+            return response.data[0]["id"]
 
-if "second_scores" not in st.session_state:
-    st.session_state.second_scores = []
+    except Exception as error:
+        st.warning(f"Database could not save the material: {error}")
+
+    return None
+
+
+def load_latest_material():
+    """Load the most recent material belonging to this browser."""
+    if not db_available():
+        return None
+
+    try:
+        response = (
+            supabase
+            .table("learning_materials")
+            .select("*")
+            .eq("user_id", USER_ID)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+
+        if response.data:
+            return response.data[0]
+
+    except Exception:
+        pass
+
+    return None
+
+
+def save_quiz_to_db(material_id, questions):
+    """Save quiz and all generated questions."""
+    if not db_available():
+        return None
+
+    try:
+        quiz_response = (
+            supabase
+            .table("quizzes")
+            .insert(
+                {
+                    "user_id": USER_ID,
+                    "material_id": material_id,
+                    "question_count": len(questions),
+                }
+            )
+            .execute()
+        )
+
+        if not quiz_response.data:
+            return None
+
+        quiz_id = quiz_response.data[0]["id"]
+
+        question_rows = []
+
+        for index, question in enumerate(questions, start=1):
+            options = question.get("options", {})
+
+            question_rows.append(
+                {
+                    "quiz_id": quiz_id,
+                    "question_number": index,
+                    "topic": str(question.get("topic", "General")),
+                    "concept": str(question.get("concept", "")),
+                    "difficulty": str(question.get("difficulty", "Medium")),
+                    "question_type": str(question.get("question_type", "")),
+                    "question": str(question.get("question", "")),
+                    "options": options,
+                    "correct_answer": str(
+                        question.get("correct_answer", "")
+                    ),
+                    "explanation": str(
+                        question.get("explanation", "")
+                    ),
+                    "source_text": str(
+                        question.get("source_text", "")
+                    ),
+                }
+            )
+
+        if question_rows:
+            (
+                supabase
+                .table("questions")
+                .insert(question_rows)
+                .execute()
+            )
+
+        return quiz_id
+
+    except Exception as error:
+        st.warning(f"Database could not save the quiz: {error}")
+        return None
+
+
+def load_latest_quiz():
+    """Load the latest unfinished/completed quiz for this browser."""
+    if not db_available():
+        return None
+
+    try:
+        quiz_response = (
+            supabase
+            .table("quizzes")
+            .select("*")
+            .eq("user_id", USER_ID)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+
+        if not quiz_response.data:
+            return None
+
+        quiz = quiz_response.data[0]
+
+        question_response = (
+            supabase
+            .table("questions")
+            .select("*")
+            .eq("quiz_id", quiz["id"])
+            .order("question_number")
+            .execute()
+        )
+
+        if not question_response.data:
+            return None
+
+        questions = []
+
+        for row in question_response.data:
+            options = row.get("options", {})
+
+            if isinstance(options, str):
+                try:
+                    options = json.loads(options)
+                except Exception:
+                    options = {}
+
+            questions.append(
+                {
+                    "id": f"Q{int(row['question_number']):03d}",
+                    "topic": row.get("topic", "General"),
+                    "concept": row.get("concept", ""),
+                    "difficulty": row.get("difficulty", "Medium"),
+                    "question_type": row.get("question_type", ""),
+                    "question": row.get("question", ""),
+                    "options": options,
+                    "correct_answer": row.get("correct_answer", ""),
+                    "explanation": row.get("explanation", ""),
+                    "source_text": row.get("source_text", ""),
+                    "related_concepts": [],
+                }
+            )
+
+        return {
+            "quiz": quiz,
+            "questions": questions,
+        }
+
+    except Exception:
+        return None
+
+
+def save_attempt_to_db(quiz_id, score, total, percentage, results):
+    """Save quiz submission and every selected answer."""
+    if not db_available() or not quiz_id:
+        return False
+
+    try:
+        attempt_response = (
+            supabase
+            .table("quiz_attempts")
+            .insert(
+                {
+                    "user_id": USER_ID,
+                    "quiz_id": quiz_id,
+                    "score": score,
+                    "total_questions": total,
+                    "percentage": round(float(percentage), 2),
+                }
+            )
+            .execute()
+        )
+
+        if not attempt_response.data:
+            return False
+
+        attempt_id = attempt_response.data[0]["id"]
+
+        question_response = (
+            supabase
+            .table("questions")
+            .select("id, question_number")
+            .eq("quiz_id", quiz_id)
+            .order("question_number")
+            .execute()
+        )
+
+        question_id_map = {}
+
+        if question_response.data:
+            for row in question_response.data:
+                question_id_map[int(row["question_number"])] = row["id"]
+
+        answer_rows = []
+
+        for result in results:
+            question_number = int(result["question"])
+            answer_rows.append(
+                {
+                    "attempt_id": attempt_id,
+                    "question_id": question_id_map.get(question_number),
+                    "selected_answer": result["selected"],
+                    "is_correct": bool(result["result"]),
+                }
+            )
+
+        answer_rows = [
+            row for row in answer_rows
+            if row["question_id"] is not None
+        ]
+
+        if answer_rows:
+            (
+                supabase
+                .table("quiz_answers")
+                .insert(answer_rows)
+                .execute()
+            )
+
+        # Store a topic-level progress record for the latest quiz.
+        topics = {}
+
+        for index, question in enumerate(
+            st.session_state.generated_questions,
+            start=1
+        ):
+            topic = question.get("topic", "General")
+            result = results[index - 1]["result"]
+
+            if topic not in topics:
+                topics[topic] = {"correct": 0, "total": 0}
+
+            topics[topic]["total"] += 1
+
+            if result:
+                topics[topic]["correct"] += 1
+
+        for topic, data in topics.items():
+            topic_score = (
+                data["correct"] / data["total"] * 100
+                if data["total"]
+                else 0
+            )
+
+            (
+                supabase
+                .table("learning_progress")
+                .insert(
+                    {
+                        "user_id": USER_ID,
+                        "topic": topic,
+                        "score": round(topic_score, 2),
+                        "attempts": 1,
+                    }
+                )
+                .execute()
+            )
+
+        return True
+
+    except Exception as error:
+        st.warning(f"Quiz result could not be saved: {error}")
+        return False
+
+
+def load_quiz_history():
+    """Load all saved quiz attempts for the current browser."""
+    if not db_available():
+        return []
+
+    try:
+        response = (
+            supabase
+            .table("quiz_attempts")
+            .select("*")
+            .eq("user_id", USER_ID)
+            .order("submitted_at")
+            .execute()
+        )
+
+        return response.data or []
+
+    except Exception:
+        return []
+
+
+def clear_database_data():
+    """Delete this browser's saved data."""
+    if not db_available():
+        return False
+
+    try:
+        supabase.table("quiz_attempts").delete().eq(
+            "user_id", USER_ID
+        ).execute()
+
+        supabase.table("learning_materials").delete().eq(
+            "user_id", USER_ID
+        ).execute()
+
+        return True
+
+    except Exception:
+        return False
+
+
+# ============================================================
+# RESTORE DATA AFTER REFRESH
+# ============================================================
+
+if not st.session_state.loaded_from_database:
+    st.session_state.loaded_from_database = True
+
+    latest_material = load_latest_material()
+
+    if latest_material:
+        st.session_state.learning_material = (
+            latest_material.get("content", "")
+        )
+        st.session_state.material_id = latest_material.get("id")
+        st.session_state.material_title = (
+            latest_material.get("title", "")
+        )
+
+    latest_quiz = load_latest_quiz()
+
+    if latest_quiz:
+        st.session_state.quiz_id = latest_quiz["quiz"]["id"]
+        st.session_state.generated_questions = latest_quiz["questions"]
+        st.session_state.quiz_total = len(latest_quiz["questions"])
+
+
+# ============================================================
+# LOAD HISTORY
+# ============================================================
+
+if db_available():
+    history = load_quiz_history()
+
+    if history:
+        st.session_state.first_scores = [
+            {
+                "quiz": index,
+                "score": float(item.get("percentage", 0))
+            }
+            for index, item in enumerate(history, start=1)
+        ]
 
 
 # ============================================================
@@ -57,10 +496,7 @@ if "second_scores" not in st.session_state:
 # ============================================================
 
 st.sidebar.title("🎓 AIStat Learn")
-
-st.sidebar.write(
-    "AI-Powered Personalized Learning Platform"
-)
+st.sidebar.write("AI-Powered Personalized Learning Platform")
 
 st.sidebar.divider()
 
@@ -72,9 +508,14 @@ page = st.sidebar.radio(
         "📝 Assessment",
         "📊 Progress",
         "📅 Learning Plan",
-        "🔧 System Check"
+        "🔧 System Check",
     ]
 )
+
+if db_available():
+    st.sidebar.success("🗄️ Database Connected")
+else:
+    st.sidebar.warning("🗄️ Database Not Connected")
 
 
 # ============================================================
@@ -84,17 +525,13 @@ page = st.sidebar.radio(
 if page == "🏠 Home":
 
     st.title("🎓 AIStat Learn")
-
-    st.subheader(
-        "AI-Powered Personalized Learning Platform"
-    )
+    st.subheader("AI-Powered Personalized Learning Platform")
 
     st.write(
         """
-        AIStat Learn helps students learn from their own
-        study material, practice MCQs, analyze performance,
-        identify weak topics and follow a personalized
-        learning strategy.
+        AIStat Learn helps students learn from their own study material,
+        practice MCQs, analyze performance, identify weak topics and
+        follow a personalized learning strategy.
         """
     )
 
@@ -107,30 +544,22 @@ if page == "🏠 Home":
     with col1:
         st.markdown("## 📚")
         st.subheader("Learn")
-        st.write(
-            "Upload or paste your learning material."
-        )
+        st.write("Upload or paste your learning material.")
 
     with col2:
         st.markdown("## 📝")
         st.subheader("Assess")
-        st.write(
-            "Generate 5 to 100 MCQs."
-        )
+        st.write("Generate 5 to 100 MCQs.")
 
     with col3:
         st.markdown("## 📊")
         st.subheader("Analyze")
-        st.write(
-            "Check your performance."
-        )
+        st.write("Check your performance.")
 
     with col4:
         st.markdown("## 🤖")
         st.subheader("Improve")
-        st.write(
-            "Follow a personalized learning plan."
-        )
+        st.write("Follow a personalized learning plan.")
 
     st.divider()
 
@@ -143,11 +572,11 @@ if page == "🏠 Home":
             """
             ### 📚 Learning Material
 
-            • Upload PDF  
-            • Upload TXT  
-            • Upload DOCX  
-            • Paste notes  
-            • Preview material  
+            • Upload PDF
+            • Upload TXT
+            • Upload DOCX
+            • Paste notes
+            • Preview material
             • Word count
             """
         )
@@ -157,28 +586,23 @@ if page == "🏠 Home":
             """
             ### 📝 Assessment
 
-            • 5 questions  
-            • 10 questions  
-            • 15 questions  
-            • 20 questions  
-            • 30 questions  
-            • 40 questions  
-            • 50 questions  
-            • 60 questions  
-            • 70 questions  
-            • 75 questions  
-            • 100 questions  
-            • Submit Quiz  
-            • Score  
+            • 5 to 100 questions
+            • Submit Quiz
+            • Score
+            • Question-wise result
             • Explanations
+            • Persistent quiz session
             """
         )
 
     st.divider()
 
-    st.info(
-        "👉 Start with 📚 Learning Material."
-    )
+    if db_available():
+        st.success(
+            "☁️ Your learning data is connected to the database."
+        )
+
+    st.info("👉 Start with 📚 Learning Material.")
 
 
 # ============================================================
@@ -218,12 +642,9 @@ elif page == "📚 Learning Material":
         ):
 
             try:
-
                 filename = uploaded_file.name.lower()
-
                 extracted_text = ""
 
-                # TXT
                 if filename.endswith(".txt"):
 
                     extracted_text = (
@@ -235,7 +656,6 @@ elif page == "📚 Learning Material":
                         )
                     )
 
-                # PDF
                 elif filename.endswith(".pdf"):
 
                     import PyPDF2
@@ -247,22 +667,13 @@ elif page == "📚 Learning Material":
                     pages = []
 
                     for pdf_page in reader.pages:
-
-                        page_text = (
-                            pdf_page.extract_text()
-                        )
+                        page_text = pdf_page.extract_text()
 
                         if page_text:
+                            pages.append(page_text)
 
-                            pages.append(
-                                page_text
-                            )
+                    extracted_text = "\n".join(pages)
 
-                    extracted_text = "\n".join(
-                        pages
-                    )
-
-                # DOCX
                 elif filename.endswith(".docx"):
 
                     from docx import Document
@@ -274,34 +685,45 @@ elif page == "📚 Learning Material":
                     paragraphs = []
 
                     for paragraph in document.paragraphs:
-
                         text = paragraph.text.strip()
 
                         if text:
+                            paragraphs.append(text)
 
-                            paragraphs.append(
-                                text
-                            )
-
-                    extracted_text = "\n".join(
-                        paragraphs
-                    )
+                    extracted_text = "\n".join(paragraphs)
 
                 if extracted_text.strip():
+
+                    # Save material in the database.
+                    material_id = save_material_to_db(
+                        uploaded_file.name,
+                        extracted_text
+                    )
 
                     st.session_state.learning_material = (
                         extracted_text
                     )
 
+                    st.session_state.material_id = material_id
+                    st.session_state.material_title = (
+                        uploaded_file.name
+                    )
+
+                    # New material = new quiz state.
                     st.session_state.generated_questions = []
-
+                    st.session_state.quiz_id = None
                     st.session_state.assessment_answers = {}
-
                     st.session_state.quiz_submitted = False
+                    st.session_state.quiz_results = []
 
                     st.success(
                         "✅ Learning material loaded successfully!"
                     )
+
+                    if material_id:
+                        st.success(
+                            "☁️ Learning material saved to database."
+                        )
 
                     st.info(
                         f"Word count: "
@@ -331,9 +753,7 @@ elif page == "📚 Learning Material":
     pasted_material = st.text_area(
         "Paste your notes here",
         height=350,
-        placeholder=(
-            "Paste your learning material here..."
-        )
+        placeholder="Paste your learning material here..."
     )
 
     if st.button(
@@ -343,19 +763,34 @@ elif page == "📚 Learning Material":
 
         if pasted_material.strip():
 
+            material_id = save_material_to_db(
+                "Pasted Learning Material",
+                pasted_material
+            )
+
             st.session_state.learning_material = (
                 pasted_material
             )
 
+            st.session_state.material_id = material_id
+            st.session_state.material_title = (
+                "Pasted Learning Material"
+            )
+
             st.session_state.generated_questions = []
-
+            st.session_state.quiz_id = None
             st.session_state.assessment_answers = {}
-
             st.session_state.quiz_submitted = False
+            st.session_state.quiz_results = []
 
             st.success(
                 "✅ Learning material saved!"
             )
+
+            if material_id:
+                st.success(
+                    "☁️ Material permanently saved to database."
+                )
 
         else:
 
@@ -382,14 +817,12 @@ elif page == "📚 Learning Material":
         col1, col2 = st.columns(2)
 
         with col1:
-
             st.metric(
                 "📝 Words",
                 len(material.split())
             )
 
         with col2:
-
             st.metric(
                 "🔤 Characters",
                 len(material)
@@ -398,7 +831,6 @@ elif page == "📚 Learning Material":
         with st.expander(
             "👁️ Preview Material"
         ):
-
             st.write(material)
 
         if st.button(
@@ -406,13 +838,19 @@ elif page == "📚 Learning Material":
             use_container_width=True
         ):
 
+            if clear_database_data():
+                st.success(
+                    "☁️ Saved database data cleared."
+                )
+
             st.session_state.learning_material = ""
-
+            st.session_state.material_id = None
+            st.session_state.material_title = ""
             st.session_state.generated_questions = []
-
+            st.session_state.quiz_id = None
             st.session_state.assessment_answers = {}
-
             st.session_state.quiz_submitted = False
+            st.session_state.quiz_results = []
 
             st.rerun()
 
@@ -434,10 +872,6 @@ elif page == "📝 Assessment":
 
     st.divider()
 
-    # --------------------------------------------------------
-    # MATERIAL CHECK
-    # --------------------------------------------------------
-
     if not st.session_state.learning_material:
 
         st.warning(
@@ -453,10 +887,6 @@ elif page == "📝 Assessment":
         st.success(
             "✅ Learning material is ready."
         )
-
-        # ----------------------------------------------------
-        # QUESTION COUNT
-        # ----------------------------------------------------
 
         st.subheader(
             "🎯 Number of Questions"
@@ -509,22 +939,34 @@ elif page == "📝 Assessment":
                         )
 
                         st.session_state.assessment_answers = {}
-
                         st.session_state.quiz_submitted = False
-
                         st.session_state.quiz_score = 0
-
                         st.session_state.quiz_total = len(
                             questions
                         )
-
-                        st.session_state.quiz_percentage = 0
-
+                        st.session_state.quiz_percentage = 0.0
                         st.session_state.quiz_results = []
+
+                        quiz_id = save_quiz_to_db(
+                            st.session_state.material_id,
+                            questions
+                        )
+
+                        st.session_state.quiz_id = quiz_id
 
                         st.success(
                             f"✅ Generated {len(questions)} questions!"
                         )
+
+                        if quiz_id:
+                            st.success(
+                                "☁️ Quiz saved. It will remain after refresh."
+                            )
+                        else:
+                            st.warning(
+                                "⚠️ Questions were generated, "
+                                "but the database could not save the quiz."
+                            )
 
                     else:
 
@@ -553,6 +995,11 @@ elif page == "📝 Assessment":
             st.header(
                 f"📝 Quiz — {len(questions)} Questions"
             )
+
+            if st.session_state.quiz_id:
+                st.success(
+                    "☁️ This quiz is saved and can be restored after refresh."
+                )
 
             st.info(
                 """
@@ -614,16 +1061,30 @@ elif page == "📝 Assessment":
 
                 if option_labels:
 
+                    previous_answer = (
+                        st.session_state
+                        .assessment_answers
+                        .get(question_number)
+                    )
+
+                    previous_index = None
+
+                    if previous_answer in option_labels:
+                        previous_index = option_labels.index(
+                            previous_answer
+                        )
+
                     selected = st.radio(
                         "Choose your answer:",
                         option_labels,
                         key=f"question_{question_number}",
-                        index=None
+                        index=previous_index
                     )
 
-                    st.session_state.assessment_answers[
-                        question_number
-                    ] = selected
+                    if selected:
+                        st.session_state.assessment_answers[
+                            question_number
+                        ] = selected
 
                 st.divider()
 
@@ -631,9 +1092,7 @@ elif page == "📝 Assessment":
             # SUBMIT
             # ------------------------------------------------
 
-            st.header(
-                "🚀 Submit Quiz"
-            )
+            st.header("🚀 Submit Quiz")
 
             if st.button(
                 "✅ SUBMIT QUIZ",
@@ -656,7 +1115,6 @@ elif page == "📝 Assessment":
                     )
 
                     if not answer:
-
                         unanswered.append(
                             question_number
                         )
@@ -678,7 +1136,6 @@ elif page == "📝 Assessment":
                 else:
 
                     score = 0
-
                     results = []
 
                     for index, question in enumerate(
@@ -723,20 +1180,16 @@ elif page == "📝 Assessment":
                         )
 
                         if is_correct:
-
                             score += 1
 
                         results.append(
                             {
                                 "question":
                                     question_number,
-
                                 "selected":
                                     selected_letter,
-
                                 "correct":
                                     correct_letter,
-
                                 "result":
                                     is_correct
                             }
@@ -750,33 +1203,48 @@ elif page == "📝 Assessment":
                         total
                         *
                         100
-                    )
+                    ) if total else 0
 
                     st.session_state.quiz_submitted = True
-
                     st.session_state.quiz_score = score
-
                     st.session_state.quiz_total = total
-
-                    st.session_state.quiz_percentage = (
-                        percentage
-                    )
-
+                    st.session_state.quiz_percentage = percentage
                     st.session_state.quiz_results = results
 
-                    # Store score for progress
-                    st.session_state.first_scores.append(
-                        {
-                            "quiz":
-                                len(
-                                    st.session_state
-                                    .first_scores
-                                ) + 1,
+                    if st.session_state.quiz_id:
 
-                            "score":
-                                percentage
-                        }
-                    )
+                        saved = save_attempt_to_db(
+                            st.session_state.quiz_id,
+                            score,
+                            total,
+                            percentage,
+                            results
+                        )
+
+                        if saved:
+                            st.success(
+                                "☁️ Quiz result saved permanently."
+                            )
+
+                    history = load_quiz_history()
+
+                    if history:
+
+                        st.session_state.first_scores = [
+                            {
+                                "quiz": index,
+                                "score": float(
+                                    item.get(
+                                        "percentage",
+                                        0
+                                    )
+                                )
+                            }
+                            for index, item in enumerate(
+                                history,
+                                start=1
+                            )
+                        ]
 
                     st.rerun()
 
@@ -851,10 +1319,6 @@ elif page == "📝 Assessment":
                         "⚠️ More revision is needed."
                     )
 
-                # ------------------------------------------------
-                # RESULT TABLE
-                # ------------------------------------------------
-
                 st.subheader(
                     "📋 Question-wise Result"
                 )
@@ -894,10 +1358,6 @@ elif page == "📝 Assessment":
                     use_container_width=True,
                     hide_index=True
                 )
-
-                # ------------------------------------------------
-                # REVIEW
-                # ------------------------------------------------
 
                 st.divider()
 
@@ -994,17 +1454,102 @@ elif page == "📊 Progress":
 
     st.divider()
 
-    if st.session_state.first_scores:
+    history = load_quiz_history()
 
-        st.subheader(
-            "📝 Quiz History"
-        )
+    if history:
 
         history_rows = []
 
-        for item in (
-            st.session_state.first_scores
+        for index, item in enumerate(
+            history,
+            start=1
         ):
+
+            history_rows.append(
+                {
+                    "Quiz":
+                        index,
+
+                    "Score":
+                        f"{float(item.get('percentage', 0)):.1f}%",
+
+                    "Correct":
+                        item.get("score", 0),
+
+                    "Total":
+                        item.get("total_questions", 0),
+
+                    "Submitted":
+                        str(
+                            item.get(
+                                "submitted_at",
+                                ""
+                            )
+                        )[:19]
+                }
+            )
+
+        history_df = pd.DataFrame(
+            history_rows
+        )
+
+        st.subheader("📝 Quiz History")
+
+        st.dataframe(
+            history_df,
+            use_container_width=True,
+            hide_index=True
+        )
+
+        chart_df = pd.DataFrame(
+            {
+                "Quiz":
+                    [
+                        index
+                        for index, _ in enumerate(
+                            history,
+                            start=1
+                        )
+                    ],
+
+                "Score":
+                    [
+                        float(
+                            item.get(
+                                "percentage",
+                                0
+                            )
+                        )
+                        for item in history
+                    ]
+            }
+        )
+
+        chart_df = chart_df.set_index(
+            "Quiz"
+        )
+
+        st.line_chart(
+            chart_df
+        )
+
+        latest_score = float(
+            history[-1].get(
+                "percentage",
+                0
+            )
+        )
+
+        st.metric(
+            "Latest Score",
+            f"{latest_score:.1f}%"
+        )
+
+    elif st.session_state.first_scores:
+
+        history_rows = []
+
+        for item in st.session_state.first_scores:
 
             history_rows.append(
                 {
@@ -1024,42 +1569,6 @@ elif page == "📊 Progress":
             history_df,
             use_container_width=True,
             hide_index=True
-        )
-
-        chart_df = pd.DataFrame(
-            {
-                "Quiz":
-                    [
-                        item["quiz"]
-                        for item
-                        in st.session_state.first_scores
-                    ],
-
-                "Score":
-                    [
-                        item["score"]
-                        for item
-                        in st.session_state.first_scores
-                    ]
-            }
-        )
-
-        chart_df = chart_df.set_index(
-            "Quiz"
-        )
-
-        st.line_chart(
-            chart_df
-        )
-
-        latest_score = (
-            st.session_state
-            .first_scores[-1]["score"]
-        )
-
-        st.metric(
-            "Latest Score",
-            f"{latest_score:.1f}%"
         )
 
     else:
@@ -1092,10 +1601,7 @@ elif page == "📅 Learning Plan":
 
     st.divider()
 
-    # DAY 1
-    st.header(
-        "📅 Day 1 — Learn"
-    )
+    st.header("📅 Day 1 — Learn")
 
     st.info(
         """
@@ -1111,10 +1617,7 @@ elif page == "📅 Learning Plan":
         """
     )
 
-    # DAY 2
-    st.header(
-        "📅 Day 2 — Understand"
-    )
+    st.header("📅 Day 2 — Understand")
 
     st.info(
         """
@@ -1129,10 +1632,7 @@ elif page == "📅 Learning Plan":
         """
     )
 
-    # DAY 3
-    st.header(
-        "📅 Day 3 — Apply"
-    )
+    st.header("📅 Day 3 — Apply")
 
     st.info(
         """
@@ -1147,10 +1647,7 @@ elif page == "📅 Learning Plan":
         """
     )
 
-    # DAY 4
-    st.header(
-        "📅 Day 4 — Practice"
-    )
+    st.header("📅 Day 4 — Practice")
 
     st.info(
         """
@@ -1165,10 +1662,7 @@ elif page == "📅 Learning Plan":
         """
     )
 
-    # DAY 5
-    st.header(
-        "📅 Day 5 — Revise & Reassess"
-    )
+    st.header("📅 Day 5 — Revise & Reassess")
 
     st.success(
         """
@@ -1184,14 +1678,17 @@ elif page == "📅 Learning Plan":
         """
     )
 
-    # SCORE BASED ADVICE
-    if st.session_state.first_scores:
+    history = load_quiz_history()
+
+    if history:
 
         st.divider()
 
-        latest_score = (
-            st.session_state
-            .first_scores[-1]["score"]
+        latest_score = float(
+            history[-1].get(
+                "percentage",
+                0
+            )
         )
 
         st.subheader(
@@ -1253,17 +1750,12 @@ elif page == "🔧 System Check":
         os.path.abspath(__file__)
     )
 
-    # --------------------------------------------------------
-    # FILES
-    # --------------------------------------------------------
-
-    st.subheader(
-        "📁 Required Files"
-    )
+    st.subheader("📁 Required Files")
 
     required_files = [
         "app.py",
-        "mcq_generator.py"
+        "mcq_generator.py",
+        "requirements.txt"
     ]
 
     for filename in required_files:
@@ -1281,19 +1773,38 @@ elif page == "🔧 System Check":
 
         else:
 
-            st.error(
-                f"❌ {filename} not found."
+            st.warning(
+                f"⚠️ {filename} not found locally."
             )
-
-    # --------------------------------------------------------
-    # IMPORT
-    # --------------------------------------------------------
 
     st.divider()
 
-    st.subheader(
-        "🐍 MCQ Generator Test"
-    )
+    st.subheader("🗄️ Supabase Connection")
+
+    if db_available():
+
+        st.success(
+            "✅ Supabase client connected."
+        )
+
+        st.write(
+            f"Browser User ID: `{USER_ID}`"
+        )
+
+    else:
+
+        st.error(
+            """
+            ❌ Supabase is not connected.
+
+            Check SUPABASE_URL and SUPABASE_KEY
+            in Streamlit Secrets.
+            """
+        )
+
+    st.divider()
+
+    st.subheader("🐍 MCQ Generator Test")
 
     try:
 
@@ -1308,10 +1819,6 @@ elif page == "🔧 System Check":
         st.error(
             f"❌ Error: {error}"
         )
-
-    # --------------------------------------------------------
-    # TEST QUESTIONS
-    # --------------------------------------------------------
 
     test_material = """
     Value education helps human beings understand their
@@ -1363,4 +1870,3 @@ st.caption(
     "🎓 AIStat Learn | "
     "Learn → Understand → Apply → Practice → Reassess"
 )
-
