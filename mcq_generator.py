@@ -3,50 +3,48 @@ import random
 
 
 # ============================================================
-# AIStat Learn - Intelligent MCQ Generator
+# TEXT CLEANING
 # ============================================================
 
-
-# ------------------------------------------------------------
-# 1. CLEAN TEXT
-# ------------------------------------------------------------
-
 def clean_text(text):
+    """Clean and normalize input text."""
     if not text:
         return ""
 
     text = str(text)
 
+    # Remove null characters
     text = text.replace("\x00", " ")
-    text = text.replace("\r", " ")
-    text = text.replace("\n", " ")
 
+    # Replace new lines and tabs with spaces
+    text = text.replace("\n", " ")
+    text = text.replace("\r", " ")
+    text = text.replace("\t", " ")
+
+    # Remove multiple spaces
     text = re.sub(r"\s+", " ", text)
 
     return text.strip()
 
 
-# ------------------------------------------------------------
-# 2. SPLIT INTO SENTENCES
-# ------------------------------------------------------------
+# ============================================================
+# SENTENCE EXTRACTION
+# ============================================================
 
 def get_sentences(text):
+    """Extract usable sentences from the text."""
 
     text = clean_text(text)
 
     if not text:
         return []
 
-    # Split even when punctuation is at the end of the text
-    sentences = re.split(
-        r"(?<=[.!?])\s+|(?<=[.!?])$",
-        text
-    )
+    # Split at ., ! or ?
+    sentences = re.split(r"(?<=[.!?])\s+", text)
 
     result = []
 
     for sentence in sentences:
-
         sentence = sentence.strip()
 
         if not sentence:
@@ -54,32 +52,20 @@ def get_sentences(text):
 
         words = sentence.split()
 
-        # Accept shorter sentences too
+        # Accept sentences with 5 or more words
         if len(words) >= 5:
+            result.append(sentence)
 
-            if not sentence.isupper():
-
-                result.append(sentence)
-
-    # If sentence splitting produced nothing,
+    # If there are no proper sentences,
     # create chunks from the text.
     if not result:
-
         words = text.split()
 
         if len(words) >= 5:
-
             chunk_size = 25
 
-            for i in range(
-                0,
-                len(words),
-                chunk_size
-            ):
-
-                chunk = " ".join(
-                    words[i:i + chunk_size]
-                )
+            for i in range(0, len(words), chunk_size):
+                chunk = " ".join(words[i:i + chunk_size])
 
                 if len(chunk.split()) >= 5:
                     result.append(chunk)
@@ -87,568 +73,305 @@ def get_sentences(text):
     return result
 
 
-# ------------------------------------------------------------
-# 3. IMPORTANT CONCEPTS
-# ------------------------------------------------------------
+# ============================================================
+# CONCEPTS
+# ============================================================
 
 CONCEPTS = [
-
-    "human values",
-    "value education",
-    "values",
-    "human beings",
-    "human aspirations",
-    "human",
-    "happiness",
-    "prosperity",
-    "aspiration",
-    "self-exploration",
-    "self exploration",
-    "natural acceptance",
-    "relationship",
-    "relationships",
-    "facility",
-    "facilities",
-    "physical facilities",
+    "python",
+    "programming",
+    "variables",
+    "loops",
+    "functions",
+    "lists",
+    "data",
+    "algorithm",
+    "software",
+    "computer",
+    "technology",
+    "learning",
     "education",
-    "skills",
-    "harmony",
-    "trust",
-    "respect",
-    "understanding",
-    "responsibility",
-    "fulfilment",
-    "fulfillment",
-    "need",
-    "purpose",
-    "acceptance",
-    "acceptable",
-    "feeling",
-    "feelings",
-    "continuous happiness",
-    "continuous happiness and prosperity"
-
+    "database",
+    "artificial intelligence",
+    "machine learning",
+    "cloud computing",
+    "cyber security",
+    "data science",
+    "communication",
+    "problem solving"
 ]
 
 
-def find_concepts(text):
+def find_concepts(sentence):
+    """Find known concepts in a sentence."""
 
-    lower_text = text.lower()
+    sentence_lower = sentence.lower()
 
     found = []
 
-    concepts_sorted = sorted(
-        CONCEPTS,
-        key=len,
-        reverse=True
-    )
-
-    for concept in concepts_sorted:
-
-        if concept.lower() in lower_text:
-
-            if concept not in found:
-                found.append(concept)
+    for concept in CONCEPTS:
+        if concept.lower() in sentence_lower:
+            found.append(concept)
 
     return found
 
 
-# ------------------------------------------------------------
-# 4. FIND SENTENCES FOR A CONCEPT
-# ------------------------------------------------------------
+# ============================================================
+# TOPIC DETECTION
+# ============================================================
 
-def concept_sources(
-    concept,
-    sentences
-):
+def determine_topic(text):
+    """Determine a simple topic from the text."""
 
-    results = []
+    text_lower = text.lower()
 
-    for sentence in sentences:
+    topic_keywords = {
+        "Python": [
+            "python",
+            "variables",
+            "lists",
+            "tuples",
+            "dictionary",
+            "function",
+            "loop"
+        ],
+        "Programming": [
+            "programming",
+            "code",
+            "software",
+            "algorithm"
+        ],
+        "Artificial Intelligence": [
+            "artificial intelligence",
+            "ai",
+            "intelligent system"
+        ],
+        "Machine Learning": [
+            "machine learning",
+            "model",
+            "training",
+            "dataset"
+        ],
+        "Data Science": [
+            "data science",
+            "data analysis",
+            "statistics",
+            "visualization"
+        ],
+        "Cloud Computing": [
+            "cloud",
+            "aws",
+            "azure",
+            "google cloud"
+        ],
+        "Cyber Security": [
+            "cyber",
+            "security",
+            "encryption",
+            "hacking"
+        ]
+    }
 
-        if concept.lower() in sentence.lower():
+    for topic, keywords in topic_keywords.items():
+        for keyword in keywords:
+            if keyword in text_lower:
+                return topic
 
-            results.append(sentence)
-
-    return results
-
-
-# ------------------------------------------------------------
-# 5. TOPIC IDENTIFICATION
-# ------------------------------------------------------------
-
-def determine_topic(
-    concept,
-    sentence
-):
-
-    text = (
-        concept
-        + " "
-        + sentence
-    ).lower()
-
-    if (
-        "self-exploration" in text
-        or "self exploration" in text
-    ):
-        return "Self-Exploration"
-
-    if "natural acceptance" in text:
-        return "Natural Acceptance"
-
-    if (
-        "relationship" in text
-        or "trust" in text
-        or "respect" in text
-    ):
-        return "Human Relationships"
-
-    if (
-        "facility" in text
-        or "facilities" in text
-        or "physical facilities" in text
-    ):
-        return "Physical Facilities"
-
-    if (
-        "happiness" in text
-        or "prosperity" in text
-    ):
-        return (
-            "Continuous Happiness and "
-            "Prosperity as Basic Human Aspirations"
-        )
-
-    if (
-        "aspiration" in text
-        or "aspire" in text
-    ):
-        return "Basic Human Aspirations"
-
-    if "value education" in text:
-        return "Introduction to Value Education"
-
-    if "education" in text:
-        return "Need for Value Education"
-
-    if "value" in text:
-        return "Human Values"
-
-    return "Learning Material"
+    return "General Learning"
 
 
-# ------------------------------------------------------------
-# 6. RELATED CONCEPTS
-# ------------------------------------------------------------
+# ============================================================
+# RELATED CONCEPTS
+# ============================================================
 
-def get_related_concepts(
-    concept,
-    concepts
-):
+def get_related_concepts(concept):
+    """Return related concepts."""
 
-    others = [
-        c
-        for c in concepts
-        if c.lower() != concept.lower()
-    ]
+    relationships = {
+        "python": ["programming", "variables", "functions", "loops", "lists"],
+        "programming": ["python", "algorithm", "software", "functions"],
+        "variables": ["python", "data", "programming"],
+        "loops": ["python", "programming", "algorithm"],
+        "functions": ["python", "programming", "software"],
+        "lists": ["python", "data", "variables"],
+        "artificial intelligence": ["machine learning", "data science"],
+        "machine learning": ["artificial intelligence", "data science"],
+        "data science": ["statistics", "machine learning", "data"],
+        "cloud computing": ["software", "technology", "data"],
+        "cyber security": ["technology", "software", "data"]
+    }
 
-    random.shuffle(others)
+    return relationships.get(
+        concept.lower(),
+        ["learning", "education", "problem solving"]
+    )
 
-    return others[:4]
 
-
-# ------------------------------------------------------------
-# 7. QUESTION TYPES
-# ------------------------------------------------------------
+# ============================================================
+# QUESTION TYPES
+# ============================================================
 
 QUESTION_TYPES = [
-
+    "concept",
     "understanding",
     "application",
-    "scenario",
-    "comparison",
-    "cause_effect",
+    "purpose",
+    "identification",
+    "knowledge",
     "reasoning",
-    "example",
-    "interpretation",
-    "assertion",
-    "higher_order"
-
+    "true_statement",
+    "best_description",
+    "practical"
 ]
 
 
-# ------------------------------------------------------------
-# 8. QUESTION TEMPLATES
-# ------------------------------------------------------------
+# ============================================================
+# CORRECT ANSWER CREATION
+# ============================================================
 
-TEMPLATES = {
-
-    "understanding": [
-
-        "Which statement best explains the idea presented in the passage?",
-
-        "What is the most appropriate interpretation of the passage?",
-
-        "Which statement correctly reflects the meaning of the passage?"
-
-    ],
-
-    "application": [
-
-        "How can the principle described in the passage be applied in everyday life?",
-
-        "Which situation best demonstrates the principle discussed in the passage?",
-
-        "A learner wants to apply the idea discussed above. Which action would be most appropriate?"
-
-    ],
-
-    "scenario": [
-
-        "A student is facing a situation related to the idea described above. Which response best reflects the learning material?",
-
-        "Consider the following situation. A person encounters a challenge related to the idea discussed above. Which approach is most consistent with the learning material?",
-
-        "Suppose a learner encounters the situation described in the passage. Which decision would best reflect the principle discussed?"
-
-    ],
-
-    "comparison": [
-
-        "Which statement best distinguishes the idea in the passage from a purely material or superficial understanding?",
-
-        "Which comparison most accurately reflects the idea presented in the learning material?",
-
-        "Which statement correctly contrasts the principle in the passage with an incomplete understanding of it?"
-
-    ],
-
-    "cause_effect": [
-
-        "According to the learning material, what is the most appropriate consequence of applying the idea discussed in the passage?",
-
-        "What relationship between the ideas in the passage is most accurately represented by the following option?",
-
-        "Which outcome is most consistent with the principle described in the passage?"
-
-    ],
-
-    "reasoning": [
-
-        "Why is the idea discussed in the passage important according to the learning material?",
-
-        "Which reasoning best supports the idea presented in the passage?",
-
-        "What is the strongest reason for the principle discussed in the passage?"
-
-    ],
-
-    "example": [
-
-        "Which of the following situations is the best example of the idea discussed in the passage?",
-
-        "Which example most clearly demonstrates the principle described in the learning material?",
-
-        "Which situation represents an appropriate application of the idea presented above?"
-
-    ],
-
-    "interpretation": [
-
-        "Which interpretation most accurately captures the deeper meaning of the passage?",
-
-        "What can reasonably be understood from the passage?",
-
-        "Which option demonstrates a correct understanding of the context presented?"
-
-    ],
-
-    "assertion": [
-
-        "Which statement is most consistent with the learning material?",
-
-        "Which of the following statements can be supported by the passage?",
-
-        "Which statement correctly represents the principle discussed?"
-
-    ],
-
-    "higher_order": [
-
-        "Which conclusion can be logically drawn from the idea presented in the passage?",
-
-        "Which option demonstrates the deepest understanding of the principle described?",
-
-        "Which conclusion would be most appropriate when the principle is applied to a new situation?"
-
-    ]
-
-}
-
-
-# ------------------------------------------------------------
-# 9. CREATE CORRECT ANSWER
-# ------------------------------------------------------------
-
-def create_correct_answer(
-    concept,
-    sentence,
-    question_type
-):
+def create_correct_answer(sentence, concept, question_type):
+    """Create a correct answer based on the source sentence."""
 
     sentence = sentence.strip()
 
-    return (
-        "The principle described in the passage should be "
-        "understood in its broader context and applied by "
-        "considering the meaning and purpose explained in "
-        "the learning material. This interpretation is "
-        "consistent with the idea presented in the passage."
-    )
+    if question_type == "concept":
+        return sentence
+
+    if question_type == "understanding":
+        return f"{concept.capitalize()} is explained in the context of: {sentence}"
+
+    if question_type == "application":
+        return f"It can be applied according to the idea described in the sentence."
+
+    if question_type == "purpose":
+        return f"It is used for the purpose described in the given learning material."
+
+    if question_type == "identification":
+        return f"The statement is mainly related to {concept}."
+
+    if question_type == "knowledge":
+        return sentence
+
+    if question_type == "reasoning":
+        return f"The statement correctly explains the relationship involving {concept}."
+
+    if question_type == "true_statement":
+        return sentence
+
+    if question_type == "best_description":
+        return sentence
+
+    if question_type == "practical":
+        return f"A practical example follows the concept described in the learning material."
+
+    return sentence
 
 
-# ------------------------------------------------------------
-# 10. CREATE WRONG ANSWERS
-# ------------------------------------------------------------
+# ============================================================
+# DISTRACTORS
+# ============================================================
 
-def create_distractors(
-    concept,
-    concepts,
-    question_type
-):
+def create_distractors(sentence, concept, question_type):
+    """Create incorrect but reasonable answer options."""
 
-    patterns = [
-
-        (
-            "The idea is concerned only with "
-            "{concept} and does not require "
-            "any broader understanding."
-        ),
-
-        (
-            "The principle suggests that external "
-            "facilities alone are sufficient to "
-            "achieve the desired outcome."
-        ),
-
-        (
-            "The statement means that a person should "
-            "accept information without examining or "
-            "understanding it."
-        ),
-
-        (
-            "The idea indicates that personal success "
-            "depends mainly on comparison and "
-            "competition with other people."
-        ),
-
-        (
-            "The principle focuses exclusively on "
-            "acquiring material resources and does not "
-            "involve understanding or relationships."
-        )
-
+    distractors = [
+        f"{concept.capitalize()} is unrelated to the topic.",
+        f"{concept.capitalize()} is used only for entertainment.",
+        f"{concept.capitalize()} does not have any practical use.",
+        f"The statement describes a completely different concept.",
+        f"The concept is applicable only outside technology.",
+        f"The concept cannot be used in programming or learning.",
+        f"The statement is mainly about an unrelated subject.",
+        f"{concept.capitalize()} is used only for storing images.",
+        f"The concept has no connection with the given material.",
+        f"The statement provides no useful information about the topic."
     ]
 
-    distractors = []
+    # Remove any accidental duplicate of the correct answer
+    clean_sentence = sentence.lower().strip()
 
-    random.shuffle(patterns)
+    result = []
 
-    for pattern in patterns:
+    for item in distractors:
+        if item.lower().strip() != clean_sentence:
+            if item not in result:
+                result.append(item)
 
-        if len(distractors) >= 3:
+    return result
+
+
+# ============================================================
+# OPTIONS
+# ============================================================
+
+def create_options(correct_answer, distractors):
+    """Create four shuffled options."""
+
+    options = [correct_answer]
+
+    for distractor in distractors:
+        if distractor not in options:
+            options.append(distractor)
+
+        if len(options) == 4:
             break
 
-        distractor = pattern.format(
-            concept=concept
+    # Safety fallback
+    while len(options) < 4:
+        options.append(
+            "None of the other statements correctly describe the concept."
         )
 
-        if distractor not in distractors:
+    random.shuffle(options)
 
-            distractors.append(
-                distractor
-            )
+    letters = ["A", "B", "C", "D"]
 
-    return distractors[:3]
+    option_dict = {}
 
+    correct_letter = None
 
-# ------------------------------------------------------------
-# 11. CREATE OPTIONS
-# ------------------------------------------------------------
+    for letter, option in zip(letters, options):
+        option_dict[letter] = option
 
-def create_options(
-    correct_answer,
-    distractors
-):
-
-    choices = [
-        correct_answer
-    ]
-
-    choices.extend(
-        distractors
-    )
-
-    # Guarantee 4 options
-    while len(choices) < 4:
-
-        choices.append(
-            "The idea should be understood differently "
-            "from the context presented in the material."
-        )
-
-    random.shuffle(choices)
-
-    letters = [
-        "A",
-        "B",
-        "C",
-        "D"
-    ]
-
-    options = {}
-
-    correct_letter = ""
-
-    for letter, choice in zip(
-        letters,
-        choices[:4]
-    ):
-
-        options[letter] = choice
-
-        if choice == correct_answer:
+        if option == correct_answer:
             correct_letter = letter
 
-    return options, correct_letter
+    return option_dict, correct_letter
 
 
-# ------------------------------------------------------------
-# 12. EXPLANATION
-# ------------------------------------------------------------
+# ============================================================
+# EXPLANATION
+# ============================================================
 
-def create_explanation(
-    concept,
-    sentence,
-    question_type
-):
+def create_explanation(sentence, concept, correct_answer):
+    """Create explanation for the correct answer."""
 
     return (
-        "The correct answer is supported by the context of "
-        "the learning material. The passage discusses "
-        + concept
-        + " as part of a broader idea. The learner should "
-        "therefore understand the complete meaning of the "
-        "statement instead of relying only on individual "
-        "keywords."
+        f"The correct answer is based on the learning material. "
+        f"The sentence explains the concept of {concept}. "
+        f"Therefore, the selected answer matches the information "
+        f"provided in the source material."
     )
 
 
-# ------------------------------------------------------------
-# 13. OPTION EXPLANATIONS
-# ------------------------------------------------------------
+# ============================================================
+# BUILD ONE MCQ
+# ============================================================
 
-def create_option_explanations(
-    options,
-    correct_letter
-):
+def build_mcq(sentence, concept, question_type, question_id):
+    """Build one complete MCQ."""
 
-    explanations = {}
-
-    for letter in [
-        "A",
-        "B",
-        "C",
-        "D"
-    ]:
-
-        if letter == correct_letter:
-
-            explanations[letter] = (
-                "This option is consistent with the "
-                "meaning and context of the learning material."
-            )
-
-        else:
-
-            explanations[letter] = (
-                "This option does not accurately represent "
-                "the specific meaning presented in the "
-                "learning material."
-            )
-
-    return explanations
-
-
-# ------------------------------------------------------------
-# 14. DIFFICULTY DISTRIBUTION
-# ------------------------------------------------------------
-
-def create_difficulties(total):
-
-    easy_count = round(
-        total * 0.40
-    )
-
-    medium_count = round(
-        total * 0.35
-    )
-
-    hard_count = (
-        total
-        - easy_count
-        - medium_count
-    )
-
-    difficulties = (
-        ["Easy"] * easy_count
-        + ["Medium"] * medium_count
-        + ["Hard"] * hard_count
-    )
-
-    random.shuffle(
-        difficulties
-    )
-
-    return difficulties
-
-
-# ------------------------------------------------------------
-# 15. CREATE ONE MCQ
-# ------------------------------------------------------------
-
-def build_mcq(
-    number,
-    concept,
-    sentence,
-    difficulty,
-    question_type,
-    concepts
-):
-
-    template = random.choice(
-        TEMPLATES[question_type]
-    )
-
-    question = (
-        template
-        + "\n\n"
-        + '"'
-        + sentence.strip()
-        + '"'
-    )
+    topic = determine_topic(sentence)
 
     correct_answer = create_correct_answer(
-        concept,
         sentence,
+        concept,
         question_type
     )
 
     distractors = create_distractors(
+        sentence,
         concept,
-        concepts,
         question_type
     )
 
@@ -657,320 +380,216 @@ def build_mcq(
         distractors
     )
 
+    # Different question wording
+    if question_type == "concept":
+        question = (
+            f"Which statement best represents the concept discussed "
+            f"in the following learning material?\n\n{sentence}"
+        )
+
+    elif question_type == "understanding":
+        question = (
+            f"Which option best explains the following statement?\n\n"
+            f"{sentence}"
+        )
+
+    elif question_type == "application":
+        question = (
+            f"How can the idea described in the following statement "
+            f"be understood in practice?\n\n{sentence}"
+        )
+
+    elif question_type == "purpose":
+        question = (
+            f"What is the main purpose or role described in the "
+            f"following statement?\n\n{sentence}"
+        )
+
+    elif question_type == "identification":
+        question = (
+            f"Which concept is mainly represented by the following "
+            f"statement?\n\n{sentence}"
+        )
+
+    elif question_type == "knowledge":
+        question = (
+            f"According to the learning material, which statement "
+            f"is correct?\n\n{sentence}"
+        )
+
+    elif question_type == "reasoning":
+        question = (
+            f"Which answer provides the best reasoning for the "
+            f"following statement?\n\n{sentence}"
+        )
+
+    elif question_type == "true_statement":
+        question = (
+            f"Which of the following is the correct statement based "
+            f"on the learning material?\n\n{sentence}"
+        )
+
+    elif question_type == "best_description":
+        question = (
+            f"Which option gives the best description of the idea "
+            f"presented below?\n\n{sentence}"
+        )
+
+    else:
+        question = (
+            f"Which option represents a practical interpretation of "
+            f"the following learning material?\n\n{sentence}"
+        )
+
     explanation = create_explanation(
-        concept,
         sentence,
-        question_type
-    )
-
-    option_explanations = create_option_explanations(
-        options,
-        correct_letter
-    )
-
-    topic = determine_topic(
         concept,
-        sentence
-    )
-
-    related = get_related_concepts(
-        concept,
-        concepts
+        correct_answer
     )
 
     return {
-
-        "id":
-            "Q"
-            + str(number).zfill(3),
-
-        "topic":
-            topic,
-
-        "concept":
-            concept.title(),
-
-        "difficulty":
-            difficulty,
-
-        "question_type":
-            question_type,
-
-        "question":
-            question,
-
-        "options":
-            options,
-
-        "correct_answer":
-            correct_letter,
-
-        "explanation":
-            explanation,
-
-        "option_explanations":
-            option_explanations,
-
-        "takeaway":
-            (
-                "Key Takeaway: Understand the complete "
-                "idea and its context rather than "
-                "memorizing an individual word."
-            ),
-
-        "source_text":
-            sentence,
-
-        "related_concepts":
-            related
-
+        "id": question_id,
+        "topic": topic,
+        "concept": concept,
+        "difficulty": "Medium",
+        "question_type": question_type,
+        "question": question,
+        "options": options,
+        "correct_answer": correct_letter,
+        "explanation": explanation,
+        "option_explanations": {
+            "A": "Review the learning material carefully.",
+            "B": "Review the learning material carefully.",
+            "C": "Review the learning material carefully.",
+            "D": "Review the learning material carefully."
+        },
+        "takeaway": (
+            f"Remember the main idea related to {concept} "
+            f"from the learning material."
+        ),
+        "source_text": sentence,
+        "related_concepts": get_related_concepts(concept)
     }
 
 
-# ------------------------------------------------------------
-# 16. DUPLICATE DETECTION
-# ------------------------------------------------------------
+# ============================================================
+# MAIN MCQ GENERATOR
+# ============================================================
 
-def question_signature(question):
+def generate_mcqs(text, num_questions=10):
+    """
+    Generate MCQs from learning material.
 
-    text = question.lower()
+    Parameters:
+        text: learning material as a string
+        num_questions: number of MCQs required
 
-    text = re.sub(
-        r"[^a-z0-9 ]",
-        "",
-        text
-    )
+    Returns:
+        List of MCQ dictionaries
+    """
 
-    words = text.split()
-
-    stop_words = {
-        "the",
-        "a",
-        "an",
-        "of",
-        "in",
-        "is",
-        "to",
-        "and",
-        "which",
-        "what",
-        "according",
-        "passage"
-    }
-
-    words = [
-        word
-        for word in words
-        if word not in stop_words
-    ]
-
-    return " ".join(
-        words[:25]
-    )
-
-
-# ------------------------------------------------------------
-# 17. GENERATE MCQs
-# ------------------------------------------------------------
-
-def generate_mcqs(
-    text,
-    number_of_questions=10
-):
-
+    # Clean input
     text = clean_text(text)
 
     if not text:
         return []
 
+    # Get sentences
     sentences = get_sentences(text)
+
+    # Emergency fallback for very short text
+    if not sentences:
+        words = text.split()
+
+        if len(words) >= 3:
+            sentences = [text]
 
     if not sentences:
         return []
 
-    # --------------------------------------------------------
-    # Find concepts
-    # --------------------------------------------------------
+    # Detect topic
+    topic = determine_topic(text)
 
-    concepts = find_concepts(text)
+    # Find concepts from all sentences
+    all_concepts = []
 
-    # Generic fallback concepts
-    if not concepts:
+    for sentence in sentences:
+        concepts = find_concepts(sentence)
 
-        words = re.findall(
-            r"\b[A-Za-z]{5,}\b",
-            text
-        )
+        for concept in concepts:
+            if concept not in all_concepts:
+                all_concepts.append(concept)
 
-        ignored = {
-            "according",
-            "following",
-            "learning",
-            "material",
-            "education",
-            "which",
-            "should",
-            "their",
-            "there",
-            "about",
-            "these",
-            "those"
-        }
-
-        words = [
-            word
-            for word in words
-            if word.lower() not in ignored
-        ]
-
-        concepts = list(
-            dict.fromkeys(
-                words
-            )
-        )[:30]
-
-    if not concepts:
-
-        concepts = [
-            "learning"
-        ]
-
-    # --------------------------------------------------------
-    # Create source pairs
-    # --------------------------------------------------------
-
-    pairs = []
-
-    for concept in concepts:
-
-        sources = concept_sources(
-            concept,
-            sentences
-        )
-
-        for source in sources:
-
-            pair = (
-                concept,
-                source
-            )
-
-            if pair not in pairs:
-                pairs.append(pair)
-
-    # Add general sentence pairs
-    if len(pairs) < number_of_questions:
-
-        for sentence in sentences:
-
-            concept = random.choice(
-                concepts
-            )
-
-            pair = (
-                concept,
-                sentence
-            )
-
-            if pair not in pairs:
-                pairs.append(pair)
-
-    # If still not enough pairs, reuse sentences
-    if not pairs:
-
-        for sentence in sentences:
-
-            pairs.append(
-                (
-                    concepts[0],
-                    sentence
-                )
-            )
-
-    # --------------------------------------------------------
-    # Difficulty
-    # --------------------------------------------------------
-
-    difficulties = create_difficulties(
-        number_of_questions
-    )
-
-    # --------------------------------------------------------
-    # Generate questions
-    # --------------------------------------------------------
+    # Fallback concept
+    if not all_concepts:
+        all_concepts = [topic]
 
     questions = []
 
-    used_signatures = set()
+    # Generate questions
+    question_id = 1
 
-    attempts = 0
+    # We deliberately cycle through sentences and question types.
+    # This guarantees that the requested number of questions can
+    # be generated even when the input contains only a few sentences.
 
-    maximum_attempts = (
-        number_of_questions * 100
-    )
+    for i in range(num_questions):
 
-    while (
-        len(questions) < number_of_questions
-        and attempts < maximum_attempts
-    ):
+        sentence = sentences[i % len(sentences)]
 
-        attempts += 1
+        concepts_in_sentence = find_concepts(sentence)
 
-        concept, sentence = random.choice(
-            pairs
-        )
+        if concepts_in_sentence:
+            concept = concepts_in_sentence[i % len(concepts_in_sentence)]
+        else:
+            concept = all_concepts[i % len(all_concepts)]
 
-        difficulty = difficulties[
-            len(questions)
+        question_type = QUESTION_TYPES[
+            i % len(QUESTION_TYPES)
         ]
 
-        question_type = random.choice(
-            QUESTION_TYPES
-        )
-
         mcq = build_mcq(
-
-            len(questions) + 1,
-
-            concept,
-
             sentence,
-
-            difficulty,
-
+            concept,
             question_type,
-
-            concepts
-
+            question_id
         )
 
-        signature = question_signature(
-            mcq["question"]
-        )
+        questions.append(mcq)
 
-        if signature in used_signatures:
-            continue
-
-        used_signatures.add(
-            signature
-        )
-
-        questions.append(
-            mcq
-        )
-
-    # --------------------------------------------------------
-    # Final numbering
-    # --------------------------------------------------------
-
-    for index, question in enumerate(
-        questions,
-        start=1
-    ):
-
-        question["id"] = (
-            "Q"
-            + str(index).zfill(3)
-        )
+        question_id += 1
 
     return questions
+
+
+# ============================================================
+# TEST
+# ============================================================
+
+if __name__ == "__main__":
+
+    test_text = """
+    Python is a programming language.
+    Python supports variables, loops, functions and lists.
+    Functions help programmers organize reusable code.
+    Lists are used to store multiple values in Python.
+    """
+
+    questions = generate_mcqs(test_text, 5)
+
+    print("=" * 60)
+    print("MCQ GENERATOR TEST")
+    print("=" * 60)
+
+    print("Questions generated:", len(questions))
+
+    for q in questions:
+        print("\nQuestion:", q["question"])
+        print("Options:")
+
+        for letter, option in q["options"].items():
+            print(f"{letter}. {option}")
+
+        print("Correct Answer:", q["correct_answer"])
+        print("Explanation:", q["explanation"])
+        print("-" * 60)
