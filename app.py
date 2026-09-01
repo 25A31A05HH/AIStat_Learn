@@ -16,7 +16,7 @@ except ImportError:
 
 
 # =========================================================
-# PAGE CONFIGURATION
+# PAGE CONFIG
 # =========================================================
 
 st.set_page_config(
@@ -33,7 +33,6 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-
     .main-title {
         font-size: 42px;
         font-weight: 700;
@@ -43,7 +42,6 @@ st.markdown(
         font-size: 20px;
         color: #666;
     }
-
     </style>
     """,
     unsafe_allow_html=True
@@ -56,7 +54,6 @@ st.markdown(
 
 defaults = {
     "user_id": str(uuid.uuid4()),
-
     "current_step": 1,
 
     "material_text": "",
@@ -75,38 +72,28 @@ defaults = {
 
     "material_saved": False,
 
-    "last_uploaded_file": "",
-
-    "quiz_history": []
+    "last_uploaded_file": ""
 }
 
-
 for key, value in defaults.items():
-
     if key not in st.session_state:
-
         st.session_state[key] = value
 
 
 # =========================================================
-# SUPABASE CONNECTION
+# SUPABASE
 # =========================================================
 
 supabase = None
-
 db_status = "Not Connected"
 
-
 try:
-
     from supabase import create_client
 
     if (
         "SUPABASE_URL" in st.secrets
-        and
-        "SUPABASE_KEY" in st.secrets
+        and "SUPABASE_KEY" in st.secrets
     ):
-
         supabase = create_client(
             st.secrets["SUPABASE_URL"],
             st.secrets["SUPABASE_KEY"]
@@ -115,34 +102,28 @@ try:
         db_status = "Connected"
 
     else:
-
         db_status = "Secrets not found"
 
-
 except Exception as e:
-
     db_status = f"Connection error: {e}"
 
 
 # =========================================================
-# NAVIGATION
+# NAVIGATION FUNCTION
 # =========================================================
 
 def go_to_step(step):
-
     st.session_state.current_step = step
-
     st.rerun()
 
 
 # =========================================================
-# TEXT FUNCTIONS
+# TEXT CLEANING
 # =========================================================
 
 def clean_text(value):
 
     if value is None:
-
         return ""
 
     return re.sub(
@@ -167,10 +148,7 @@ def get_question_text(question):
         ]:
 
             if key in question:
-
-                return clean_text(
-                    question[key]
-                )
+                return clean_text(question[key])
 
     return clean_text(question)
 
@@ -190,10 +168,7 @@ def get_topic(question):
         ]:
 
             if key in question:
-
-                return clean_text(
-                    question[key]
-                )
+                return clean_text(question[key])
 
     return "General"
 
@@ -212,27 +187,22 @@ def get_concept(question):
         ]:
 
             if key in question:
-
-                return clean_text(
-                    question[key]
-                )
+                return clean_text(question[key])
 
     return get_topic(question)
 
 
 # =========================================================
-# GET OPTIONS
+# OPTIONS
 # =========================================================
 
 def get_options(question):
 
     if not isinstance(question, dict):
-
         return []
 
     raw_options = None
 
-    # Try different possible names
     for key in [
         "options",
         "choices",
@@ -240,29 +210,18 @@ def get_options(question):
     ]:
 
         if key in question:
-
             raw_options = question[key]
-
             break
 
     if raw_options is None:
-
         return []
 
-    # ---------------------------------------------
-    # Dictionary
-    # ---------------------------------------------
-
+    # Dictionary options
     if isinstance(raw_options, dict):
 
         options = []
 
-        for letter in [
-            "A",
-            "B",
-            "C",
-            "D"
-        ]:
+        for letter in ["A", "B", "C", "D"]:
 
             if letter in raw_options:
 
@@ -273,7 +232,6 @@ def get_options(question):
                 )
 
         if options:
-
             return options
 
         return [
@@ -281,10 +239,7 @@ def get_options(question):
             for value in raw_options.values()
         ]
 
-    # ---------------------------------------------
-    # List
-    # ---------------------------------------------
-
+    # List options
     if isinstance(
         raw_options,
         (list, tuple)
@@ -299,13 +254,12 @@ def get_options(question):
 
 
 # =========================================================
-# GET CORRECT ANSWER
+# CORRECT ANSWER
 # =========================================================
 
 def get_correct_raw(question):
 
     if not isinstance(question, dict):
-
         return ""
 
     for key in [
@@ -326,28 +280,15 @@ def get_correct_raw(question):
 
 def get_correct_option(question):
 
-    correct = get_correct_raw(
-        question
-    )
+    correct = get_correct_raw(question)
 
-    options = get_options(
-        question
-    )
+    options = get_options(question)
 
     if not correct:
-
         return ""
 
-    # ---------------------------------------------
     # A / B / C / D
-    # ---------------------------------------------
-
-    if correct.upper() in [
-        "A",
-        "B",
-        "C",
-        "D"
-    ]:
+    if correct.upper() in ["A", "B", "C", "D"]:
 
         index = (
             ord(correct.upper())
@@ -356,20 +297,12 @@ def get_correct_option(question):
         )
 
         if index < len(options):
-
             return options[index]
 
-    # ---------------------------------------------
-    # "A. Queue"
-    # ---------------------------------------------
+    # A. Queue
+    for i, option in enumerate(options):
 
-    for i, option in enumerate(
-        options
-    ):
-
-        letter = chr(
-            65 + i
-        )
+        letter = chr(65 + i)
 
         if correct.upper().startswith(
             letter + "."
@@ -385,13 +318,12 @@ def get_correct_option(question):
 
 
 # =========================================================
-# GET EXPLANATION
+# EXPLANATION
 # =========================================================
 
 def get_explanation(question):
 
     if not isinstance(question, dict):
-
         return ""
 
     for key in [
@@ -401,7 +333,6 @@ def get_explanation(question):
     ]:
 
         if key in question:
-
             return clean_text(
                 question[key]
             )
@@ -419,7 +350,6 @@ def get_option_feedback(
 ):
 
     if not isinstance(question, dict):
-
         return ""
 
     feedback = question.get(
@@ -427,10 +357,7 @@ def get_option_feedback(
         {}
     )
 
-    if isinstance(
-        feedback,
-        dict
-    ):
+    if isinstance(feedback, dict):
 
         if option in feedback:
 
@@ -440,19 +367,15 @@ def get_option_feedback(
 
         for key, value in feedback.items():
 
-            if clean_text(
-                key
-            ).lower() == option.lower():
+            if clean_text(key).lower() == option.lower():
 
-                return clean_text(
-                    value
-                )
+                return clean_text(value)
 
     return ""
 
 
 # =========================================================
-# WRONG OPTION EXPLANATION
+# WRONG ANSWER EXPLANATION
 # =========================================================
 
 def explain_wrong_option(
@@ -460,23 +383,17 @@ def explain_wrong_option(
     option
 ):
 
-    correct = get_correct_option(
-        question
-    )
+    correct = get_correct_option(question)
 
-    topic = get_topic(
-        question
-    )
+    topic = get_topic(question)
 
-    question_text = get_question_text(
-        question
-    )
+    question_text = get_question_text(question)
 
     if option.lower() == correct.lower():
 
         return "This is the correct answer."
 
-    # Queue / FIFO
+    # Queue
     if (
         "queue" in correct.lower()
         or
@@ -494,8 +411,8 @@ def explain_wrong_option(
         if "tree" in option.lower():
 
             return (
-                "A Tree is mainly used to represent "
-                "hierarchical relationships."
+                "A Tree is mainly used to "
+                "represent hierarchical relationships."
             )
 
         if "graph" in option.lower():
@@ -505,7 +422,7 @@ def explain_wrong_option(
                 "between vertices and edges."
             )
 
-    # Stack / LIFO
+    # Stack
     if (
         "stack" in correct.lower()
         or
@@ -515,16 +432,15 @@ def explain_wrong_option(
         if "queue" in option.lower():
 
             return (
-                "A Queue follows FIFO, whereas "
-                "a Stack follows LIFO."
+                "A Queue follows FIFO, "
+                "whereas a Stack follows LIFO."
             )
 
     return (
         f"This option is incorrect because "
         f"it does not match the concept "
         f"being tested in {topic}. "
-        f"The correct answer is "
-        f"{correct}."
+        f"The correct answer is {correct}."
     )
 
 
@@ -661,8 +577,8 @@ Different data structures are useful for different problems.
 
 This question is related to **{topic}**.
 
-Review the definition, properties, operations,
-and applications of this topic.
+Review the definition, properties,
+operations, and applications of this topic.
 """
 
 
@@ -670,31 +586,25 @@ and applications of this topic.
 # PERFORMANCE
 # =========================================================
 
-def performance_level(
-    percentage
-):
+def performance_level(percentage):
 
     if percentage >= 90:
-
         return "Excellent 🌟"
 
     if percentage >= 75:
-
         return "Very Good 👍"
 
     if percentage >= 60:
-
         return "Good 🙂"
 
     if percentage >= 40:
-
         return "Needs Improvement 📚"
 
     return "Needs More Practice 💪"
 
 
 # =========================================================
-# DATABASE — MATERIAL
+# SAVE MATERIAL
 # =========================================================
 
 def save_material_to_db(
@@ -703,7 +613,6 @@ def save_material_to_db(
 ):
 
     if supabase is None:
-
         return None
 
     try:
@@ -728,9 +637,7 @@ def save_material_to_db(
 
         if result.data:
 
-            return result.data[0].get(
-                "id"
-            )
+            return result.data[0].get("id")
 
     except Exception as e:
 
@@ -742,15 +649,12 @@ def save_material_to_db(
 
 
 # =========================================================
-# DATABASE — QUIZ
+# SAVE QUIZ
 # =========================================================
 
-def save_quiz_to_db(
-    questions
-):
+def save_quiz_to_db(questions):
 
     if supabase is None:
-
         return None
 
     try:
@@ -772,9 +676,7 @@ def save_quiz_to_db(
 
         if result.data:
 
-            return result.data[0].get(
-                "id"
-            )
+            return result.data[0].get("id")
 
     except Exception as e:
 
@@ -786,7 +688,7 @@ def save_quiz_to_db(
 
 
 # =========================================================
-# DATABASE — ATTEMPT
+# SAVE ATTEMPT
 # =========================================================
 
 def save_attempt_to_db(
@@ -797,7 +699,6 @@ def save_attempt_to_db(
 ):
 
     if supabase is None:
-
         return
 
     try:
@@ -834,13 +735,12 @@ def save_attempt_to_db(
 
 
 # =========================================================
-# DATABASE — HISTORY
+# LOAD HISTORY
 # =========================================================
 
 def load_quiz_history():
 
     if supabase is None:
-
         return []
 
     try:
@@ -898,21 +798,13 @@ for i, step_name in enumerate(
     start=1
 ):
 
-    if (
-        i
-        <
-        st.session_state.current_step
-    ):
+    if i < st.session_state.current_step:
 
         st.sidebar.success(
             step_name
         )
 
-    elif (
-        i
-        ==
-        st.session_state.current_step
-    ):
+    elif i == st.session_state.current_step:
 
         st.sidebar.info(
             step_name
@@ -1084,9 +976,9 @@ elif sidebar_page == "📚 Learning Material":
         "Upload a PDF or paste your learning material."
     )
 
-    # =====================================================
-    # PDF UPLOAD
-    # =====================================================
+    # -----------------------------------------------------
+    # PDF
+    # -----------------------------------------------------
 
     st.subheader(
         "📤 Upload PDF"
@@ -1126,13 +1018,13 @@ elif sidebar_page == "📚 Learning Material":
 
                     for page in reader.pages:
 
-                        page_text = (
+                        text = (
                             page.extract_text()
                             or ""
                         )
 
                         extracted_text += (
-                            page_text + "\n"
+                            text + "\n"
                         )
 
                     if extracted_text.strip():
@@ -1159,12 +1051,7 @@ elif sidebar_page == "📚 Learning Material":
                     else:
 
                         st.error(
-                            "❌ No text could be extracted."
-                        )
-
-                        st.info(
-                            "If the PDF is scanned, "
-                            "paste the text manually."
+                            "❌ No text could be extracted from the PDF."
                         )
 
                 except Exception as e:
@@ -1173,9 +1060,9 @@ elif sidebar_page == "📚 Learning Material":
                         f"❌ Error reading PDF: {e}"
                     )
 
-    # =====================================================
-    # MATERIAL EDITOR
-    # =====================================================
+    # -----------------------------------------------------
+    # TEXT
+    # -----------------------------------------------------
 
     st.divider()
 
@@ -1213,14 +1100,6 @@ elif sidebar_page == "📚 Learning Material":
 
                 st.error(
                     "Please upload a PDF or enter text."
-                )
-
-            elif len(
-                material_text.split()
-            ) < 5:
-
-                st.error(
-                    "Please provide more learning material."
                 )
 
             else:
@@ -1263,14 +1142,6 @@ elif sidebar_page == "📚 Learning Material":
 
                 st.error(
                     "Please upload a PDF or enter text."
-                )
-
-            elif len(
-                material_text.split()
-            ) < 5:
-
-                st.error(
-                    "Please provide more learning material."
                 )
 
             else:
@@ -1324,12 +1195,25 @@ elif sidebar_page == "📝 Generate Questions":
 
         st.divider()
 
-        question_count = st.slider(
-            "Number of Questions",
+        # =================================================
+        # 1 TO 100 QUESTIONS
+        # =================================================
+
+        question_count = st.number_input(
+            "🔢 Number of Questions",
             min_value=1,
-            max_value=20,
-            value=5
+            max_value=100,
+            value=10,
+            step=1
         )
+
+        st.caption(
+            "You can generate up to 100 questions."
+        )
+
+        # =================================================
+        # GENERATE
+        # =================================================
 
         if st.button(
             "🤖 Generate Questions",
@@ -1337,14 +1221,14 @@ elif sidebar_page == "📝 Generate Questions":
         ):
 
             with st.spinner(
-                "Generating questions..."
+                f"Generating {question_count} questions..."
             ):
 
                 try:
 
                     questions = generate_mcqs(
                         st.session_state.material_text,
-                        question_count
+                        int(question_count)
                     )
 
                     if questions:
@@ -1361,6 +1245,10 @@ elif sidebar_page == "📝 Generate Questions":
 
                         st.session_state.quiz_submitted = False
 
+                        st.session_state.score = 0
+
+                        st.session_state.percentage = 0
+
                         quiz_id = save_quiz_to_db(
                             questions
                         )
@@ -1369,9 +1257,19 @@ elif sidebar_page == "📝 Generate Questions":
                             quiz_id
                         )
 
-                        st.success(
-                            f"✅ {len(questions)} questions generated!"
-                        )
+                        if len(questions) < int(question_count):
+
+                            st.warning(
+                                f"⚠️ Requested {question_count}, "
+                                f"but only {len(questions)} "
+                                f"questions were generated."
+                            )
+
+                        else:
+
+                            st.success(
+                                f"✅ {len(questions)} questions generated!"
+                            )
 
                     else:
 
@@ -1386,7 +1284,7 @@ elif sidebar_page == "📝 Generate Questions":
                     )
 
         # =================================================
-        # QUESTION PREVIEW
+        # PREVIEW
         # =================================================
 
         if st.session_state.questions:
@@ -1394,7 +1292,8 @@ elif sidebar_page == "📝 Generate Questions":
             st.divider()
 
             st.subheader(
-                "👀 Question Preview"
+                f"👀 Generated Questions "
+                f"({len(st.session_state.questions)})"
             )
 
             for i, question in enumerate(
@@ -1460,7 +1359,7 @@ elif sidebar_page == "✍️ Take Assessment":
             go_to_step(2)
 
     # =====================================================
-    # BEFORE SUBMISSION
+    # BEFORE SUBMIT
     # =====================================================
 
     elif not st.session_state.quiz_submitted:
@@ -1476,12 +1375,9 @@ elif sidebar_page == "✍️ Take Assessment":
             st.session_state.questions
         ):
 
-            question_text = get_question_text(
-                question
-            )
-
             st.markdown(
-                f"### Q{i + 1}. {question_text}"
+                f"### Q{i + 1}. "
+                f"{get_question_text(question)}"
             )
 
             options = get_options(
@@ -1489,12 +1385,11 @@ elif sidebar_page == "✍️ Take Assessment":
             )
 
             # =================================================
-            # CLICKABLE OPTIONS
+            # CLICKABLE A/B/C/D OPTIONS
             # =================================================
 
             if options:
 
-                # Create A/B/C/D display
                 display_options = []
 
                 for j, option in enumerate(
@@ -1516,7 +1411,6 @@ elif sidebar_page == "✍️ Take Assessment":
                     index=None
                 )
 
-                # Save selected option
                 if selected:
 
                     selected_index = (
@@ -1539,9 +1433,9 @@ elif sidebar_page == "✍️ Take Assessment":
 
             st.divider()
 
-        # =====================================================
-        # SUBMIT BUTTON
-        # =====================================================
+        # =================================================
+        # SUBMIT
+        # =================================================
 
         if st.button(
             "✅ Submit Assessment",
@@ -1621,21 +1515,13 @@ elif sidebar_page == "✍️ Take Assessment":
                     else 0
                 )
 
-                st.session_state.score = (
-                    score
-                )
+                st.session_state.score = score
 
-                st.session_state.total_questions = (
-                    total
-                )
+                st.session_state.total_questions = total
 
-                st.session_state.percentage = (
-                    percentage
-                )
+                st.session_state.percentage = percentage
 
-                st.session_state.quiz_submitted = (
-                    True
-                )
+                st.session_state.quiz_submitted = True
 
                 save_attempt_to_db(
                     st.session_state.quiz_id,
@@ -1647,7 +1533,7 @@ elif sidebar_page == "✍️ Take Assessment":
                 st.rerun()
 
     # =====================================================
-    # AFTER SUBMISSION
+    # AFTER SUBMIT
     # =====================================================
 
     else:
@@ -1661,8 +1547,6 @@ elif sidebar_page == "✍️ Take Assessment":
         total = st.session_state.total_questions
 
         percentage = st.session_state.percentage
-
-        st.divider()
 
         # =================================================
         # SCORE
@@ -1758,7 +1642,6 @@ elif sidebar_page == "✍️ Take Assessment":
                 correct_answer.strip().lower()
             )
 
-            # Topic tracking
             if topic not in topic_results:
 
                 topic_results[topic] = {
@@ -1804,7 +1687,7 @@ elif sidebar_page == "✍️ Take Assessment":
             )
 
             # =================================================
-            # WHY CORRECT?
+            # WHY CORRECT
             # =================================================
 
             st.markdown(
@@ -1830,7 +1713,7 @@ elif sidebar_page == "✍️ Take Assessment":
                 )
 
             # =================================================
-            # WHY WRONG?
+            # WHY OTHER OPTIONS WRONG
             # =================================================
 
             st.markdown(
@@ -1924,9 +1807,7 @@ elif sidebar_page == "✍️ Take Assessment":
         if topic_rows:
 
             st.dataframe(
-                pd.DataFrame(
-                    topic_rows
-                ),
+                pd.DataFrame(topic_rows),
                 use_container_width=True,
                 hide_index=True
             )
@@ -1980,7 +1861,7 @@ elif sidebar_page == "✍️ Take Assessment":
         st.divider()
 
         # =================================================
-        # NEXT ACTIONS
+        # NEXT
         # =================================================
 
         col1, col2 = st.columns(2)
@@ -2126,9 +2007,7 @@ elif sidebar_page == "📅 Learning Plan":
         "📅 Step 5 — Personalized Learning Plan"
     )
 
-    percentage = (
-        st.session_state.percentage
-    )
+    percentage = st.session_state.percentage
 
     if percentage >= 80:
 
@@ -2226,7 +2105,6 @@ elif sidebar_page == "🔧 System Check":
         "🔧 System Check"
     )
 
-    # Streamlit
     st.success(
         "✅ Streamlit is working"
     )
@@ -2255,9 +2133,10 @@ elif sidebar_page == "🔧 System Check":
             """
             Python is a programming language.
             Python supports variables, loops,
-            functions and lists.
+            functions, lists, tuples, dictionaries,
+            classes and modules.
             """,
-            2
+            5
         )
 
         if test_questions:
