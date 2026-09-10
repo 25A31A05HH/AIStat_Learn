@@ -8,9 +8,9 @@ IBM Bob was used as an AI-powered development partner during the development of 
 
 ## 2. Why IBM Bob Was Used
 
-As AIStat Learn was developed as a solo project, IBM Bob helped accelerate the software development workflow.
+AIStat Learn was developed as a solo project, so IBM Bob was used to support and accelerate different stages of the software development workflow.
 
-It was used to support:
+IBM Bob was used for:
 
 * Project planning
 * Code generation
@@ -19,9 +19,9 @@ It was used to support:
 * Feature development
 * Code understanding
 * Refactoring
-* Documentation
+* Documentation support
 
-IBM Bob helped reduce repetitive development work and made it easier to iterate on the application.
+Using IBM Bob helped reduce repetitive development work and made it easier to experiment with and improve different parts of the application.
 
 ## 3. Project Planning
 
@@ -37,21 +37,21 @@ The main components included:
 * Progress tracking
 * Learning plan management
 
-This helped organize the development process before implementing individual features.
+This helped organize the development process and define the functionality required for the application.
 
 ## 4. Code Development
 
 Natural-language requirements were provided to IBM Bob to assist with implementing and modifying Python application components.
 
-Bob was used to help develop and improve different modules according to the requirements of AIStat Learn.
+IBM Bob helped generate and improve code for different modules according to the requirements of AIStat Learn.
 
-The developer reviewed the generated suggestions and adapted them to the application's actual requirements.
+The generated suggestions were reviewed and adapted to match the application's actual functionality.
 
 ## 5. Debugging
 
-During development, IBM Bob assisted in understanding programming errors and identifying possible solutions.
+During development, IBM Bob was used to help understand programming errors and identify possible solutions.
 
-The workflow included:
+The development process followed an iterative workflow:
 
 ```text
 Run Application
@@ -67,7 +67,7 @@ Modify Code
 Test Again
 ```
 
-This iterative process helped resolve development issues more efficiently.
+This process helped identify and resolve development issues more efficiently.
 
 ## 6. Feature Development
 
@@ -81,19 +81,21 @@ IBM Bob assisted with the development and refinement of features related to:
 * Learning plans
 * Application workflow
 
-The final implementation was reviewed and tested before being integrated into the project.
+The implemented features were reviewed and tested before being integrated into the project.
 
 ## 7. Code Understanding
 
-Because AIStat Learn contains multiple Python modules, IBM Bob was also used to explain existing code and help understand relationships between different components.
+AIStat Learn contains multiple Python modules responsible for different functions.
 
-This was useful when modifying existing functionality and troubleshooting integration issues.
+IBM Bob was used to explain existing code and help understand the relationships between different components.
+
+This was useful when modifying existing functionality, integrating modules, and troubleshooting issues.
 
 ## 8. Refactoring and Improvement
 
 IBM Bob was used to suggest improvements to existing code and help organize functionality into separate modules.
 
-The objective was to maintain a modular and understandable project structure.
+The goal was to maintain a modular, readable, and understandable project structure.
 
 ## 9. Development Workflow
 
@@ -117,28 +119,43 @@ Refinement
 Final Validation
 ```
 
+This iterative approach allowed the application to be continuously tested and improved throughout development.
+
 ## 10. Human Validation
 
 IBM Bob was used as an AI development assistant and not as a replacement for developer decision-making.
 
-The generated code and suggestions were reviewed, modified where necessary, and tested by the developer before being used in the application.
+The generated code and suggestions were reviewed and modified where necessary. The application was also tested to verify that the implemented functionality worked according to the project requirements.
+
+Final development decisions and validation remained the responsibility of the developer.
 
 ## 11. Impact on Development
 
-Using IBM Bob helped accelerate development of AIStat Learn by providing assistance with coding, debugging, planning, and understanding the project structure.
+Using IBM Bob helped accelerate the development of AIStat Learn by providing assistance with:
 
-This was particularly useful for a solo developer working on a multi-feature application.
+* Understanding requirements
+* Writing and modifying code
+* Debugging errors
+* Improving existing functionality
+* Understanding the project structure
+* Iterating on new features
+
+This was particularly useful for developing a multi-feature application as a solo developer.
 
 ## 12. Conclusion
 
-IBM Bob played an important role as an AI-powered development partner during the development of AIStat Learn.
+IBM Bob served as an AI-powered development partner during the development of AIStat Learn.
 
-Its assistance helped streamline the development workflow and enabled faster experimentation, debugging, feature implementation, and refinement while keeping the developer responsible for reviewing and validating the final application.
+Its assistance helped streamline the software development workflow and supported faster experimentation, debugging, feature implementation, code understanding, and refinement.
+
+At the same time, the developer remained responsible for reviewing the generated suggestions, testing the application, making implementation decisions, and validating the final project.
 
 ---
 
 **Project:** AIStat Learn
 
 **Developer:** Surimalla Venkata Tejaswi
+
+**College:** Pragati Engineering College
 
 **Hackathon:** SkillUp Hackathon in collaboration with IBM SkillsBuild
